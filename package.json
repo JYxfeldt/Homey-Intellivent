@@ -1,0 +1,27 @@
+{
+  "name": "com.intellivent.fresh",
+  "version": "1.0.0",
+  "description": "Homey app to control Intellivent Fresh ventilation fans via Bluetooth",
+  "main": "app.js",
+  "scripts": {
+    "lint": "eslint --ext .js .",
+    "lint:fix": "eslint --ext .js . --fix"
+  },
+  "author": "JYxfeldt",
+  "license": "MIT",
+  "homepage": "https://github.com/JYxfeldt/Homey-Intellivent",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JYxfeldt/Homey-Intellivent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/JYxfeldt/Homey-Intellivent/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-athom": "^3.0.0"
+  }
+}

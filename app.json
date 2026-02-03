@@ -1,0 +1,404 @@
+{
+  "id": "com.intellivent.fresh",
+  "version": "1.0.0",
+  "compatibility": ">=8.0.0",
+  "sdk": 3,
+  "platforms": ["local"],
+  "name": {
+    "en": "Intellivent Fresh"
+  },
+  "description": {
+    "en": "Control your Intellivent Fresh ventilation fans via Bluetooth"
+  },
+  "category": ["climate"],
+  "tags": {
+    "en": ["ventilation", "fan", "bathroom", "intellivent", "fresh", "bluetooth", "ble"]
+  },
+  "permissions": [],
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "JYxfeldt"
+  },
+  "contributors": {
+    "developers": [
+      {
+        "name": "JYxfeldt"
+      }
+    ]
+  },
+  "source": "https://github.com/JYxfeldt/Homey-Intellivent",
+  "homepage": "https://github.com/JYxfeldt/Homey-Intellivent",
+  "support": "https://github.com/JYxfeldt/Homey-Intellivent/issues",
+  "brandColor": "#00A0E3",
+  "drivers": [
+    {
+      "id": "intellivent-sky",
+      "name": {
+        "en": "Intellivent Sky"
+      },
+      "class": "fan",
+      "capabilities": [
+        "onoff",
+        "fan_speed",
+        "measure_humidity",
+        "measure_temperature",
+        "intellivent_mode",
+        "intellivent_rpm"
+      ],
+      "capabilitiesOptions": {
+        "fan_speed": {
+          "min": 0,
+          "max": 100,
+          "step": 1
+        },
+        "intellivent_rpm": {
+          "min": 800,
+          "max": 2400,
+          "step": 100
+        }
+      },
+      "platforms": ["local"],
+      "connectivity": ["ble"],
+      "images": {
+        "small": "/drivers/intellivent-sky/assets/images/small.png",
+        "large": "/drivers/intellivent-sky/assets/images/large.png",
+        "xlarge": "/drivers/intellivent-sky/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          },
+          "options": {
+            "singular": false
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "settings": [
+        {
+          "type": "group",
+          "label": {
+            "en": "Authentication"
+          },
+          "children": [
+            {
+              "id": "auth_code",
+              "type": "text",
+              "label": {
+                "en": "Authentication Code"
+              },
+              "hint": {
+                "en": "The authentication code retrieved from the device during pairing"
+              },
+              "value": ""
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Device Information"
+          },
+          "children": [
+            {
+              "id": "firmware_version",
+              "type": "label",
+              "label": {
+                "en": "Firmware Version"
+              },
+              "value": "Unknown"
+            },
+            {
+              "id": "hardware_version",
+              "type": "label",
+              "label": {
+                "en": "Hardware Version"
+              },
+              "value": "Unknown"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "capabilities": {
+    "intellivent_mode": {
+      "type": "enum",
+      "title": {
+        "en": "Mode"
+      },
+      "values": [
+        {
+          "id": "off",
+          "title": {
+            "en": "Off"
+          }
+        },
+        {
+          "id": "constant_speed",
+          "title": {
+            "en": "Constant Speed"
+          }
+        },
+        {
+          "id": "humidity",
+          "title": {
+            "en": "Humidity"
+          }
+        },
+        {
+          "id": "light",
+          "title": {
+            "en": "Light"
+          }
+        },
+        {
+          "id": "voc",
+          "title": {
+            "en": "VOC"
+          }
+        },
+        {
+          "id": "timer",
+          "title": {
+            "en": "Timer"
+          }
+        },
+        {
+          "id": "boost",
+          "title": {
+            "en": "Boost"
+          }
+        },
+        {
+          "id": "airing",
+          "title": {
+            "en": "Airing"
+          }
+        },
+        {
+          "id": "pause",
+          "title": {
+            "en": "Pause"
+          }
+        }
+      ],
+      "getable": true,
+      "setable": true,
+      "uiComponent": "picker"
+    },
+    "intellivent_rpm": {
+      "type": "number",
+      "title": {
+        "en": "RPM"
+      },
+      "units": {
+        "en": "RPM"
+      },
+      "min": 800,
+      "max": 2400,
+      "step": 100,
+      "getable": true,
+      "setable": true,
+      "uiComponent": "slider"
+    }
+  },
+  "flow": {
+    "triggers": [
+      {
+        "id": "mode_changed",
+        "title": {
+          "en": "Mode changed"
+        },
+        "tokens": [
+          {
+            "name": "mode",
+            "type": "string",
+            "title": {
+              "en": "Mode"
+            },
+            "example": {
+              "en": "Humidity"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=intellivent-sky"
+          }
+        ]
+      },
+      {
+        "id": "humidity_changed",
+        "title": {
+          "en": "Humidity changed"
+        },
+        "tokens": [
+          {
+            "name": "humidity",
+            "type": "number",
+            "title": {
+              "en": "Humidity"
+            },
+            "example": {
+              "en": "65"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=intellivent-sky"
+          }
+        ]
+      }
+    ],
+    "conditions": [
+      {
+        "id": "mode_is",
+        "title": {
+          "en": "Mode !{{is|is not}} ..."
+        },
+        "titleFormatted": {
+          "en": "Mode !{{is|is not}} [[mode]]"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=intellivent-sky"
+          },
+          {
+            "type": "dropdown",
+            "name": "mode",
+            "title": {
+              "en": "Mode"
+            },
+            "values": [
+              { "id": "off", "label": { "en": "Off" } },
+              { "id": "constant_speed", "label": { "en": "Constant Speed" } },
+              { "id": "humidity", "label": { "en": "Humidity" } },
+              { "id": "light", "label": { "en": "Light" } },
+              { "id": "voc", "label": { "en": "VOC" } },
+              { "id": "timer", "label": { "en": "Timer" } },
+              { "id": "boost", "label": { "en": "Boost" } },
+              { "id": "airing", "label": { "en": "Airing" } },
+              { "id": "pause", "label": { "en": "Pause" } }
+            ]
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "set_mode",
+        "title": {
+          "en": "Set mode"
+        },
+        "titleFormatted": {
+          "en": "Set mode to [[mode]]"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=intellivent-sky"
+          },
+          {
+            "type": "dropdown",
+            "name": "mode",
+            "title": {
+              "en": "Mode"
+            },
+            "values": [
+              { "id": "off", "label": { "en": "Off" } },
+              { "id": "constant_speed", "label": { "en": "Constant Speed" } },
+              { "id": "humidity", "label": { "en": "Humidity" } },
+              { "id": "light", "label": { "en": "Light" } },
+              { "id": "voc", "label": { "en": "VOC" } },
+              { "id": "timer", "label": { "en": "Timer" } },
+              { "id": "boost", "label": { "en": "Boost" } },
+              { "id": "airing", "label": { "en": "Airing" } },
+              { "id": "pause", "label": { "en": "Pause" } }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "set_rpm",
+        "title": {
+          "en": "Set fan speed (RPM)"
+        },
+        "titleFormatted": {
+          "en": "Set fan speed to [[rpm]] RPM"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=intellivent-sky"
+          },
+          {
+            "type": "range",
+            "name": "rpm",
+            "title": {
+              "en": "RPM"
+            },
+            "min": 800,
+            "max": 2400,
+            "step": 100
+          }
+        ]
+      },
+      {
+        "id": "start_boost",
+        "title": {
+          "en": "Start boost"
+        },
+        "titleFormatted": {
+          "en": "Start boost for [[duration]] minutes at [[rpm]] RPM"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=intellivent-sky"
+          },
+          {
+            "type": "range",
+            "name": "duration",
+            "title": {
+              "en": "Duration (minutes)"
+            },
+            "min": 1,
+            "max": 60,
+            "step": 1
+          },
+          {
+            "type": "range",
+            "name": "rpm",
+            "title": {
+              "en": "RPM"
+            },
+            "min": 800,
+            "max": 2400,
+            "step": 100
+          }
+        ]
+      }
+    ]
+  }
+}

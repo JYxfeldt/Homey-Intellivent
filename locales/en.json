@@ -1,0 +1,68 @@
+{
+  "pairing": {
+    "error_discovery": "Could not discover Bluetooth devices. Make sure Bluetooth is enabled and the device is in pairing mode."
+  },
+  "errors": {
+    "connection_failed": "Failed to connect to device. Make sure it is within Bluetooth range.",
+    "authentication_failed": "Authentication failed. Please re-pair the device.",
+    "write_failed": "Failed to send command to device.",
+    "read_failed": "Failed to read data from device."
+  },
+  "settings": {
+    "auth_code": {
+      "title": "Authentication Code",
+      "hint": "The authentication code retrieved from the device during pairing"
+    },
+    "firmware_version": {
+      "title": "Firmware Version"
+    },
+    "hardware_version": {
+      "title": "Hardware Version"
+    }
+  },
+  "capabilities": {
+    "intellivent_mode": {
+      "title": "Mode",
+      "values": {
+        "off": "Off",
+        "constant_speed": "Constant Speed",
+        "humidity": "Humidity",
+        "light": "Light",
+        "voc": "VOC",
+        "timer": "Timer",
+        "boost": "Boost",
+        "airing": "Airing",
+        "pause": "Pause"
+      }
+    },
+    "intellivent_rpm": {
+      "title": "Fan Speed (RPM)"
+    }
+  },
+  "flow": {
+    "triggers": {
+      "mode_changed": {
+        "title": "Mode changed"
+      },
+      "humidity_changed": {
+        "title": "Humidity changed"
+      }
+    },
+    "conditions": {
+      "mode_is": {
+        "title": "Mode is..."
+      }
+    },
+    "actions": {
+      "set_mode": {
+        "title": "Set mode"
+      },
+      "set_rpm": {
+        "title": "Set fan speed (RPM)"
+      },
+      "start_boost": {
+        "title": "Start boost"
+      }
+    }
+  }
+}

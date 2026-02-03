@@ -1,0 +1,68 @@
+{
+  "pairing": {
+    "error_discovery": "Kunde inte upptäcka Bluetooth-enheter. Kontrollera att Bluetooth är aktiverat och att enheten är i parkopplingsläge."
+  },
+  "errors": {
+    "connection_failed": "Kunde inte ansluta till enheten. Kontrollera att den är inom Bluetooth-räckvidd.",
+    "authentication_failed": "Autentisering misslyckades. Parkoppla enheten igen.",
+    "write_failed": "Kunde inte skicka kommando till enheten.",
+    "read_failed": "Kunde inte läsa data från enheten."
+  },
+  "settings": {
+    "auth_code": {
+      "title": "Autentiseringskod",
+      "hint": "Autentiseringskoden som hämtades från enheten vid parkoppling"
+    },
+    "firmware_version": {
+      "title": "Firmware-version"
+    },
+    "hardware_version": {
+      "title": "Hårdvaruversion"
+    }
+  },
+  "capabilities": {
+    "intellivent_mode": {
+      "title": "Läge",
+      "values": {
+        "off": "Av",
+        "constant_speed": "Konstant hastighet",
+        "humidity": "Fuktighet",
+        "light": "Ljus",
+        "voc": "VOC",
+        "timer": "Timer",
+        "boost": "Boost",
+        "airing": "Vädring",
+        "pause": "Paus"
+      }
+    },
+    "intellivent_rpm": {
+      "title": "Fläkthastighet (RPM)"
+    }
+  },
+  "flow": {
+    "triggers": {
+      "mode_changed": {
+        "title": "Läge ändrades"
+      },
+      "humidity_changed": {
+        "title": "Fuktighet ändrades"
+      }
+    },
+    "conditions": {
+      "mode_is": {
+        "title": "Läge är..."
+      }
+    },
+    "actions": {
+      "set_mode": {
+        "title": "Ange läge"
+      },
+      "set_rpm": {
+        "title": "Ange fläkthastighet (RPM)"
+      },
+      "start_boost": {
+        "title": "Starta boost"
+      }
+    }
+  }
+}
