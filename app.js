@@ -48,6 +48,14 @@ class IntelliventApp extends Homey.App {
       .registerRunListener(async (args) => {
         await args.device.startBoost(args.duration, args.rpm);
       });
+
+    // Action: Configure humidity detection
+    this.homey.flow.getActionCard('configure_humidity')
+      .registerRunListener(async (args) => {
+        const enabled = args.enabled === 'true';
+        const sensitivity = parseInt(args.sensitivity, 10);
+        await args.device.configureHumidity(enabled, sensitivity, args.rpm);
+      });
   }
 
 }

@@ -18,6 +18,18 @@
     },
     "hardware_version": {
       "title": "Hardware Version"
+    },
+    "humidity_enabled": {
+      "title": "Enable Humidity Detection",
+      "hint": "Automatically increase fan speed when humidity rises"
+    },
+    "humidity_sensitivity": {
+      "title": "Sensitivity",
+      "hint": "How sensitive the humidity detection should be"
+    },
+    "humidity_rpm": {
+      "title": "Fan Speed (RPM)",
+      "hint": "Fan speed when humidity is detected (800-2400)"
     }
   },
   "capabilities": {
@@ -62,6 +74,9 @@
       },
       "start_boost": {
         "title": "Start boost"
+      },
+      "configure_humidity": {
+        "title": "Configure humidity detection"
       }
     }
   }
