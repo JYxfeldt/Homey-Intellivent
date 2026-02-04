@@ -33,11 +33,32 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Check if the device is in read-only mode
+   * Device is read-only when auth code is 00000000
+   * @returns {boolean} - True if read-only
+   */
+  _isReadOnly() {
+    const authCode = this.getSetting('auth_code');
+    return authCode === '00000000';
+  }
+
+  /**
+   * Throw an error if the device is in read-only mode
+   * @throws {Error} - If device is read-only
+   */
+  _checkWriteAccess() {
+    if (this._isReadOnly()) {
+      throw new Error(this.homey.__('errors.read_only'));
+    }
+  }
+
+  /**
    * Register capability listeners
    */
   _registerCapabilityListeners() {
     // On/Off capability
     this.registerCapabilityListener('onoff', async (value) => {
+      this._checkWriteAccess();
       this.log(`Setting onoff to ${value}`);
       if (value) {
         // Turn on - set to constant speed mode with default RPM
@@ -50,12 +71,14 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // Mode capability
     this.registerCapabilityListener('intellivent_mode', async (value) => {
+      this._checkWriteAccess();
       this.log(`Setting mode to ${value}`);
       await this.setMode(value);
     });
 
     // RPM capability
     this.registerCapabilityListener('intellivent_rpm', async (value) => {
+      this._checkWriteAccess();
       this.log(`Setting RPM to ${value}`);
       await this.setRpm(value);
     });
@@ -388,6 +411,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * @param {string} mode - Mode to set
    */
   async setMode(mode) {
+    this._checkWriteAccess();
     try {
       await this._withConnection(async () => {
         switch (mode) {
@@ -438,6 +462,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * @param {number} rpm - RPM value
    */
   async setRpm(rpm) {
+    this._checkWriteAccess();
     await this._setTemporarySpeed(rpm);
     await this.setCapabilityValue('intellivent_rpm', rpm);
   }
@@ -448,6 +473,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * @param {number} rpm - RPM value
    */
   async startBoost(duration, rpm) {
+    this._checkWriteAccess();
     await this._withConnection(async () => {
       await this._setBoost(true, rpm, duration);
     });
@@ -461,6 +487,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * @param {number} rpm - Fan speed when humidity detected
    */
   async configureHumidity(enabled, sensitivity, rpm) {
+    this._checkWriteAccess();
     await this._withConnection(async () => {
       await this._setHumidity(enabled, sensitivity, rpm);
     });
@@ -561,6 +588,12 @@ class IntelliventSkyDevice extends Homey.Device {
     const humidityChanged = changedKeys.some(key => humidityKeys.includes(key));
 
     if (humidityChanged) {
+      // Check for read-only mode (use newSettings in case auth_code changed)
+      const authCode = newSettings.auth_code || this.getSetting('auth_code');
+      if (authCode === '00000000') {
+        throw new Error(this.homey.__('errors.read_only'));
+      }
+
       const enabled = newSettings.humidity_enabled;
       const sensitivity = parseInt(newSettings.humidity_sensitivity, 10);
       const rpm = newSettings.humidity_rpm;

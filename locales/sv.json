@@ -6,7 +6,8 @@
     "connection_failed": "Kunde inte ansluta till enheten. Kontrollera att den är inom Bluetooth-räckvidd.",
     "authentication_failed": "Autentisering misslyckades. Parkoppla enheten igen.",
     "write_failed": "Kunde inte skicka kommando till enheten.",
-    "read_failed": "Kunde inte läsa data från enheten."
+    "read_failed": "Kunde inte läsa data från enheten.",
+    "read_only": "Enheten är i skrivskyddat läge. Parkoppla enheten korrekt för att aktivera styrning."
   },
   "settings": {
     "auth_code": {
