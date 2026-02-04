@@ -210,7 +210,8 @@
       "step": 100,
       "getable": true,
       "setable": true,
-      "uiComponent": "slider"
+      "uiComponent": "slider",
+      "insights": true
     }
   },
   "flow": {

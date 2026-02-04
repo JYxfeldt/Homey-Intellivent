@@ -17,6 +17,10 @@ class IntelliventSkyDevice extends Homey.Device {
     this._characteristics = {};
     this._pollInterval = null;
     this._isConnecting = false;
+    this._isConnected = false;
+    this._connectionIdleTimer = null;
+    this._reconnectAttempts = 0;
+    this._operationQueue = Promise.resolve();
 
     // Register capability listeners
     this._registerCapabilityListeners();
@@ -81,12 +85,27 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * Connect to the BLE device
+   * Connect to the BLE device (persistent connection)
    * @returns {BlePeripheral} - The connected peripheral
    */
   async _connect() {
+    // Reset idle timer on every connection attempt
+    this._resetIdleTimer();
+
+    // Already connected
+    if (this._isConnected && this._peripheral) {
+      return this._peripheral;
+    }
+
+    // Wait if connection is in progress
     if (this._isConnecting) {
-      throw new Error('Connection already in progress');
+      // Wait for connection to complete
+      while (this._isConnecting) {
+        await new Promise(resolve => this.homey.setTimeout(resolve, 100));
+      }
+      if (this._isConnected && this._peripheral) {
+        return this._peripheral;
+      }
     }
 
     this._isConnecting = true;
@@ -106,6 +125,14 @@ class IntelliventSkyDevice extends Homey.Device {
       this._peripheral = await advertisement.connect();
       this.log('Connected to device');
 
+      // Set up disconnect handler
+      this._peripheral.once('disconnect', () => {
+        this.log('Device disconnected unexpectedly');
+        this._isConnected = false;
+        this._peripheral = null;
+        this._characteristics = {};
+      });
+
       // Discover services and characteristics
       await this._peripheral.discoverAllServicesAndCharacteristics();
 
@@ -115,16 +142,47 @@ class IntelliventSkyDevice extends Homey.Device {
       // Authenticate if we have an auth code
       await this._authenticate();
 
+      this._isConnected = true;
+      this._reconnectAttempts = 0;
+
       return this._peripheral;
+    } catch (err) {
+      this._isConnected = false;
+      this._peripheral = null;
+      this._characteristics = {};
+      throw err;
     } finally {
       this._isConnecting = false;
     }
   }
 
   /**
-   * Disconnect from the BLE device
+   * Reset the connection idle timer
    */
-  async _disconnect() {
+  _resetIdleTimer() {
+    // Clear existing timer
+    if (this._connectionIdleTimer) {
+      this.homey.clearTimeout(this._connectionIdleTimer);
+    }
+
+    // Set new idle timer
+    this._connectionIdleTimer = this.homey.setTimeout(() => {
+      this.log('Connection idle timeout reached, disconnecting...');
+      this._disconnect();
+    }, Constants.CONNECTION_IDLE_TIMEOUT);
+  }
+
+  /**
+   * Disconnect from the BLE device
+   * @param {boolean} force - Force disconnect even if operations pending
+   */
+  async _disconnect(force = false) {
+    // Clear idle timer
+    if (this._connectionIdleTimer) {
+      this.homey.clearTimeout(this._connectionIdleTimer);
+      this._connectionIdleTimer = null;
+    }
+
     if (this._peripheral) {
       try {
         await this._peripheral.disconnect();
@@ -134,6 +192,7 @@ class IntelliventSkyDevice extends Homey.Device {
       }
       this._peripheral = null;
       this._characteristics = {};
+      this._isConnected = false;
     }
   }
 
@@ -215,16 +274,50 @@ class IntelliventSkyDevice extends Homey.Device {
 
   /**
    * Execute a BLE operation with automatic connection handling
+   * Maintains persistent connection with idle timeout
    * @param {Function} operation - The operation to execute
    * @returns {*} - Result of the operation
    */
   async _withConnection(operation) {
-    try {
-      await this._connect();
-      return await operation();
-    } finally {
-      await this._disconnect();
-    }
+    // Queue operations to prevent concurrent BLE access
+    this._operationQueue = this._operationQueue.then(async () => {
+      let lastError = null;
+
+      for (let attempt = 0; attempt <= Constants.MAX_RECONNECT_ATTEMPTS; attempt++) {
+        try {
+          await this._connect();
+          const result = await operation();
+          // Reset idle timer after successful operation
+          this._resetIdleTimer();
+          return result;
+        } catch (err) {
+          lastError = err;
+          this.log(`Operation failed (attempt ${attempt + 1}): ${err.message}`);
+
+          // If connection issue, try to reconnect
+          if (!this._isConnected || err.message.includes('not connected') || err.message.includes('disconnected')) {
+            this._isConnected = false;
+            this._peripheral = null;
+            this._characteristics = {};
+
+            if (attempt < Constants.MAX_RECONNECT_ATTEMPTS) {
+              this.log(`Reconnecting in ${Constants.RECONNECT_DELAY / 1000} seconds...`);
+              await new Promise(resolve => this.homey.setTimeout(resolve, Constants.RECONNECT_DELAY));
+            }
+          } else {
+            // Non-connection error, don't retry
+            throw err;
+          }
+        }
+      }
+
+      throw lastError;
+    }).catch(err => {
+      // Propagate error but keep the queue working for future operations
+      throw err;
+    });
+
+    return this._operationQueue;
   }
 
   /**
@@ -466,10 +559,17 @@ class IntelliventSkyDevice extends Homey.Device {
     // Stop polling
     if (this._pollInterval) {
       this.homey.clearInterval(this._pollInterval);
+      this._pollInterval = null;
+    }
+
+    // Clear idle timer
+    if (this._connectionIdleTimer) {
+      this.homey.clearTimeout(this._connectionIdleTimer);
+      this._connectionIdleTimer = null;
     }
 
     // Disconnect
-    await this._disconnect();
+    await this._disconnect(true);
   }
 
 }
