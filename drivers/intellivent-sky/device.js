@@ -48,14 +48,6 @@ class IntelliventSkyDevice extends Homey.Device {
       }
     });
 
-    // Fan speed capability (0-100%)
-    this.registerCapabilityListener('fan_speed', async (value) => {
-      this.log(`Setting fan_speed to ${value}%`);
-      // Convert percentage to RPM (800-2400)
-      const rpm = Math.round(Constants.MIN_RPM + (value / 100) * (Constants.MAX_RPM - Constants.MIN_RPM));
-      await this._setTemporarySpeed(rpm);
-    });
-
     // Mode capability
     this.registerCapabilityListener('intellivent_mode', async (value) => {
       this.log(`Setting mode to ${value}`);
@@ -361,10 +353,6 @@ class IntelliventSkyDevice extends Homey.Device {
     // Update RPM
     await this.setCapabilityValue('intellivent_rpm', sensorData.rpm).catch(this.error);
 
-    // Update fan speed percentage
-    const speedPercent = Math.round(((sensorData.rpm - Constants.MIN_RPM) / (Constants.MAX_RPM - Constants.MIN_RPM)) * 100);
-    await this.setCapabilityValue('fan_speed', Math.max(0, Math.min(100, speedPercent))).catch(this.error);
-
     // Update temperature
     if (sensorData.temperature > 0) {
       await this.setCapabilityValue('measure_temperature', sensorData.temperature).catch(this.error);
@@ -448,10 +436,6 @@ class IntelliventSkyDevice extends Homey.Device {
   async setRpm(rpm) {
     await this._setTemporarySpeed(rpm);
     await this.setCapabilityValue('intellivent_rpm', rpm);
-
-    // Update fan speed percentage
-    const speedPercent = Math.round(((rpm - Constants.MIN_RPM) / (Constants.MAX_RPM - Constants.MIN_RPM)) * 100);
-    await this.setCapabilityValue('fan_speed', Math.max(0, Math.min(100, speedPercent)));
   }
 
   /**

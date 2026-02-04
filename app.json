@@ -43,18 +43,12 @@
       "class": "fan",
       "capabilities": [
         "onoff",
-        "fan_speed",
         "measure_humidity",
         "measure_temperature",
         "intellivent_mode",
         "intellivent_rpm"
       ],
       "capabilitiesOptions": {
-        "fan_speed": {
-          "min": 0,
-          "max": 100,
-          "step": 1
-        },
         "intellivent_rpm": {
           "min": 800,
           "max": 2400,
