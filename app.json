@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -43,16 +43,21 @@
       "class": "fan",
       "capabilities": [
         "onoff",
+        "intellivent_rpm",
         "measure_humidity",
         "measure_temperature",
-        "intellivent_mode",
-        "intellivent_rpm"
+        "intellivent_mode"
       ],
       "capabilitiesOptions": {
         "intellivent_rpm": {
           "min": 800,
           "max": 2400,
-          "step": 100
+          "step": 100,
+          "title": {
+            "en": "Fan Speed"
+          },
+          "preventTag": false,
+          "preventInsights": false
         }
       },
       "platforms": ["local"],
