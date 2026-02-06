@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -46,7 +46,10 @@
         "intellivent_rpm",
         "measure_humidity",
         "measure_temperature",
-        "intellivent_mode"
+        "intellivent_mode",
+        "intellivent_humidity_sensitivity",
+        "intellivent_light_sensitivity",
+        "intellivent_voc_sensitivity"
       ],
       "capabilitiesOptions": {
         "intellivent_rpm": {
@@ -260,6 +263,48 @@
       "setable": true,
       "uiComponent": "slider",
       "insights": true
+    },
+    "intellivent_humidity_sensitivity": {
+      "type": "enum",
+      "title": {
+        "en": "Humidity Sensitivity"
+      },
+      "values": [
+        { "id": "0", "title": { "en": "Low" } },
+        { "id": "1", "title": { "en": "Medium" } },
+        { "id": "2", "title": { "en": "High" } }
+      ],
+      "getable": true,
+      "setable": true,
+      "uiComponent": "picker"
+    },
+    "intellivent_light_sensitivity": {
+      "type": "enum",
+      "title": {
+        "en": "Light Sensitivity"
+      },
+      "values": [
+        { "id": "0", "title": { "en": "Low" } },
+        { "id": "1", "title": { "en": "Medium" } },
+        { "id": "2", "title": { "en": "High" } }
+      ],
+      "getable": true,
+      "setable": true,
+      "uiComponent": "picker"
+    },
+    "intellivent_voc_sensitivity": {
+      "type": "enum",
+      "title": {
+        "en": "Smell Sensitivity"
+      },
+      "values": [
+        { "id": "0", "title": { "en": "Low" } },
+        { "id": "1", "title": { "en": "Medium" } },
+        { "id": "2", "title": { "en": "High" } }
+      ],
+      "getable": true,
+      "setable": true,
+      "uiComponent": "picker"
     }
   },
   "flow": {

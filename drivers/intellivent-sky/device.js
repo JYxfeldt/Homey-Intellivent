@@ -82,6 +82,27 @@ class IntelliventSkyDevice extends Homey.Device {
       this.log(`Setting RPM to ${value}`);
       await this.setRpm(value);
     });
+
+    // Humidity sensitivity capability
+    this.registerCapabilityListener('intellivent_humidity_sensitivity', async (value) => {
+      this._checkWriteAccess();
+      this.log(`Setting humidity sensitivity to ${value}`);
+      await this.setHumiditySensitivity(parseInt(value, 10));
+    });
+
+    // Light sensitivity capability
+    this.registerCapabilityListener('intellivent_light_sensitivity', async (value) => {
+      this._checkWriteAccess();
+      this.log(`Setting light sensitivity to ${value}`);
+      await this.setLightSensitivity(parseInt(value, 10));
+    });
+
+    // VOC sensitivity capability
+    this.registerCapabilityListener('intellivent_voc_sensitivity', async (value) => {
+      this._checkWriteAccess();
+      this.log(`Setting VOC sensitivity to ${value}`);
+      await this.setVocSensitivity(parseInt(value, 10));
+    });
   }
 
   /**
@@ -505,6 +526,62 @@ class IntelliventSkyDevice extends Homey.Device {
     }
 
     this.log(`Humidity detection configured: enabled=${enabled}, sensitivity=${sensitivity}, rpm=${rpm}`);
+  }
+
+  /**
+   * Set humidity sensitivity
+   * @param {number} sensitivity - Sensitivity level (0=low, 1=medium, 2=high)
+   */
+  async setHumiditySensitivity(sensitivity) {
+    this._checkWriteAccess();
+    const rpm = this.getSetting('humidity_rpm') || this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
+    const enabled = this.getSetting('humidity_enabled') !== false;
+
+    await this._withConnection(async () => {
+      await this._setHumidity(enabled, sensitivity, rpm);
+    });
+
+    // Update settings
+    await this.setSettings({ humidity_sensitivity: String(sensitivity) });
+    await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity));
+
+    this.log(`Humidity sensitivity set to ${sensitivity}`);
+  }
+
+  /**
+   * Set light sensitivity
+   * @param {number} sensitivity - Sensitivity level (0=low, 1=medium, 2=high)
+   */
+  async setLightSensitivity(sensitivity) {
+    this._checkWriteAccess();
+    const vocSensitivity = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '1', 10);
+    const vocEnabled = this.getCapabilityValue('intellivent_mode') === 'voc';
+
+    await this._withConnection(async () => {
+      await this._setLightVoc(true, sensitivity, vocEnabled, vocSensitivity);
+    });
+
+    await this.setCapabilityValue('intellivent_light_sensitivity', String(sensitivity));
+
+    this.log(`Light sensitivity set to ${sensitivity}`);
+  }
+
+  /**
+   * Set VOC (smell) sensitivity
+   * @param {number} sensitivity - Sensitivity level (0=low, 1=medium, 2=high)
+   */
+  async setVocSensitivity(sensitivity) {
+    this._checkWriteAccess();
+    const lightSensitivity = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '1', 10);
+    const lightEnabled = this.getCapabilityValue('intellivent_mode') === 'light';
+
+    await this._withConnection(async () => {
+      await this._setLightVoc(lightEnabled, lightSensitivity, true, sensitivity);
+    });
+
+    await this.setCapabilityValue('intellivent_voc_sensitivity', String(sensitivity));
+
+    this.log(`VOC sensitivity set to ${sensitivity}`);
   }
 
   // BLE write operations

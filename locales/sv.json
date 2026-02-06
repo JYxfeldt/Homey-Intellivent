@@ -50,6 +50,30 @@
     },
     "intellivent_rpm": {
       "title": "Fläkthastighet (RPM)"
+    },
+    "intellivent_humidity_sensitivity": {
+      "title": "Fuktighetskänslighet",
+      "values": {
+        "0": "Låg",
+        "1": "Medium",
+        "2": "Hög"
+      }
+    },
+    "intellivent_light_sensitivity": {
+      "title": "Ljuskänslighet",
+      "values": {
+        "0": "Låg",
+        "1": "Medium",
+        "2": "Hög"
+      }
+    },
+    "intellivent_voc_sensitivity": {
+      "title": "Luktkänslighet",
+      "values": {
+        "0": "Låg",
+        "1": "Medium",
+        "2": "Hög"
+      }
     }
   },
   "flow": {
