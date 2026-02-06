@@ -83,6 +83,13 @@ class IntelliventSkyDevice extends Homey.Device {
       await this.setRpm(value);
     });
 
+    // Humidity enabled capability
+    this.registerCapabilityListener('intellivent_humidity_enabled', async (value) => {
+      this._checkWriteAccess();
+      this.log(`Setting humidity enabled to ${value}`);
+      await this.setHumidityEnabled(value);
+    });
+
     // Humidity sensitivity capability
     this.registerCapabilityListener('intellivent_humidity_sensitivity', async (value) => {
       this._checkWriteAccess();
@@ -90,11 +97,25 @@ class IntelliventSkyDevice extends Homey.Device {
       await this.setHumiditySensitivity(parseInt(value, 10));
     });
 
+    // Light enabled capability
+    this.registerCapabilityListener('intellivent_light_enabled', async (value) => {
+      this._checkWriteAccess();
+      this.log(`Setting light enabled to ${value}`);
+      await this.setLightEnabled(value);
+    });
+
     // Light sensitivity capability
     this.registerCapabilityListener('intellivent_light_sensitivity', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting light sensitivity to ${value}`);
       await this.setLightSensitivity(parseInt(value, 10));
+    });
+
+    // VOC enabled capability
+    this.registerCapabilityListener('intellivent_voc_enabled', async (value) => {
+      this._checkWriteAccess();
+      this.log(`Setting VOC enabled to ${value}`);
+      await this.setVocEnabled(value);
     });
 
     // VOC sensitivity capability
@@ -529,13 +550,32 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Set humidity detection enabled/disabled
+   * @param {boolean} enabled - Enable or disable humidity detection
+   */
+  async setHumidityEnabled(enabled) {
+    this._checkWriteAccess();
+    const sensitivity = parseInt(this.getCapabilityValue('intellivent_humidity_sensitivity') || '1', 10);
+    const rpm = this.getSetting('humidity_rpm') || this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
+
+    await this._withConnection(async () => {
+      await this._setHumidity(enabled, sensitivity, rpm);
+    });
+
+    await this.setCapabilityValue('intellivent_humidity_enabled', enabled);
+    await this.setSettings({ humidity_enabled: enabled });
+
+    this.log(`Humidity detection ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
    * Set humidity sensitivity
    * @param {number} sensitivity - Sensitivity level (0=low, 1=medium, 2=high)
    */
   async setHumiditySensitivity(sensitivity) {
     this._checkWriteAccess();
     const rpm = this.getSetting('humidity_rpm') || this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
-    const enabled = this.getSetting('humidity_enabled') !== false;
+    const enabled = this.getCapabilityValue('intellivent_humidity_enabled') !== false;
 
     await this._withConnection(async () => {
       await this._setHumidity(enabled, sensitivity, rpm);
@@ -549,16 +589,36 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Set light detection enabled/disabled
+   * @param {boolean} enabled - Enable or disable light detection
+   */
+  async setLightEnabled(enabled) {
+    this._checkWriteAccess();
+    const lightSensitivity = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '1', 10);
+    const vocEnabled = this.getCapabilityValue('intellivent_voc_enabled') === true;
+    const vocSensitivity = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '1', 10);
+
+    await this._withConnection(async () => {
+      await this._setLightVoc(enabled, lightSensitivity, vocEnabled, vocSensitivity);
+    });
+
+    await this.setCapabilityValue('intellivent_light_enabled', enabled);
+
+    this.log(`Light detection ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
    * Set light sensitivity
    * @param {number} sensitivity - Sensitivity level (0=low, 1=medium, 2=high)
    */
   async setLightSensitivity(sensitivity) {
     this._checkWriteAccess();
+    const lightEnabled = this.getCapabilityValue('intellivent_light_enabled') === true;
+    const vocEnabled = this.getCapabilityValue('intellivent_voc_enabled') === true;
     const vocSensitivity = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '1', 10);
-    const vocEnabled = this.getCapabilityValue('intellivent_mode') === 'voc';
 
     await this._withConnection(async () => {
-      await this._setLightVoc(true, sensitivity, vocEnabled, vocSensitivity);
+      await this._setLightVoc(lightEnabled, sensitivity, vocEnabled, vocSensitivity);
     });
 
     await this.setCapabilityValue('intellivent_light_sensitivity', String(sensitivity));
@@ -567,16 +627,36 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Set VOC (smell) detection enabled/disabled
+   * @param {boolean} enabled - Enable or disable VOC detection
+   */
+  async setVocEnabled(enabled) {
+    this._checkWriteAccess();
+    const lightEnabled = this.getCapabilityValue('intellivent_light_enabled') === true;
+    const lightSensitivity = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '1', 10);
+    const vocSensitivity = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '1', 10);
+
+    await this._withConnection(async () => {
+      await this._setLightVoc(lightEnabled, lightSensitivity, enabled, vocSensitivity);
+    });
+
+    await this.setCapabilityValue('intellivent_voc_enabled', enabled);
+
+    this.log(`VOC detection ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
    * Set VOC (smell) sensitivity
    * @param {number} sensitivity - Sensitivity level (0=low, 1=medium, 2=high)
    */
   async setVocSensitivity(sensitivity) {
     this._checkWriteAccess();
+    const lightEnabled = this.getCapabilityValue('intellivent_light_enabled') === true;
     const lightSensitivity = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '1', 10);
-    const lightEnabled = this.getCapabilityValue('intellivent_mode') === 'light';
+    const vocEnabled = this.getCapabilityValue('intellivent_voc_enabled') === true;
 
     await this._withConnection(async () => {
-      await this._setLightVoc(lightEnabled, lightSensitivity, true, sensitivity);
+      await this._setLightVoc(lightEnabled, lightSensitivity, vocEnabled, sensitivity);
     });
 
     await this.setCapabilityValue('intellivent_voc_sensitivity', String(sensitivity));

@@ -51,6 +51,9 @@
     "intellivent_rpm": {
       "title": "Fan Speed (RPM)"
     },
+    "intellivent_humidity_enabled": {
+      "title": "Humidity Detection"
+    },
     "intellivent_humidity_sensitivity": {
       "title": "Humidity Sensitivity",
       "values": {
@@ -59,6 +62,9 @@
         "2": "High"
       }
     },
+    "intellivent_light_enabled": {
+      "title": "Light Detection"
+    },
     "intellivent_light_sensitivity": {
       "title": "Light Sensitivity",
       "values": {
@@ -66,6 +72,9 @@
         "1": "Medium",
         "2": "High"
       }
+    },
+    "intellivent_voc_enabled": {
+      "title": "Smell Detection"
     },
     "intellivent_voc_sensitivity": {
       "title": "Smell Sensitivity",

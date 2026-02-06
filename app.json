@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -47,8 +47,11 @@
         "measure_humidity",
         "measure_temperature",
         "intellivent_mode",
+        "intellivent_humidity_enabled",
         "intellivent_humidity_sensitivity",
+        "intellivent_light_enabled",
         "intellivent_light_sensitivity",
+        "intellivent_voc_enabled",
         "intellivent_voc_sensitivity"
       ],
       "capabilitiesOptions": {
@@ -264,6 +267,15 @@
       "uiComponent": "slider",
       "insights": true
     },
+    "intellivent_humidity_enabled": {
+      "type": "boolean",
+      "title": {
+        "en": "Humidity Detection"
+      },
+      "getable": true,
+      "setable": true,
+      "uiComponent": "toggle"
+    },
     "intellivent_humidity_sensitivity": {
       "type": "enum",
       "title": {
@@ -278,6 +290,15 @@
       "setable": true,
       "uiComponent": "picker"
     },
+    "intellivent_light_enabled": {
+      "type": "boolean",
+      "title": {
+        "en": "Light Detection"
+      },
+      "getable": true,
+      "setable": true,
+      "uiComponent": "toggle"
+    },
     "intellivent_light_sensitivity": {
       "type": "enum",
       "title": {
@@ -291,6 +312,15 @@
       "getable": true,
       "setable": true,
       "uiComponent": "picker"
+    },
+    "intellivent_voc_enabled": {
+      "type": "boolean",
+      "title": {
+        "en": "Smell Detection"
+      },
+      "getable": true,
+      "setable": true,
+      "uiComponent": "toggle"
     },
     "intellivent_voc_sensitivity": {
       "type": "enum",

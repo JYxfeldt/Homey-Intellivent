@@ -51,6 +51,9 @@
     "intellivent_rpm": {
       "title": "Fläkthastighet (RPM)"
     },
+    "intellivent_humidity_enabled": {
+      "title": "Fuktighetsdetektering"
+    },
     "intellivent_humidity_sensitivity": {
       "title": "Fuktighetskänslighet",
       "values": {
@@ -59,6 +62,9 @@
         "2": "Hög"
       }
     },
+    "intellivent_light_enabled": {
+      "title": "Ljusdetektering"
+    },
     "intellivent_light_sensitivity": {
       "title": "Ljuskänslighet",
       "values": {
@@ -66,6 +72,9 @@
         "1": "Medium",
         "2": "Hög"
       }
+    },
+    "intellivent_voc_enabled": {
+      "title": "Luktdetektering"
     },
     "intellivent_voc_sensitivity": {
       "title": "Luktkänslighet",
