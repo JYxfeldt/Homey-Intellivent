@@ -22,6 +22,11 @@ class IntelliventSkyDevice extends Homey.Device {
     this._reconnectAttempts = 0;
     this._operationQueue = Promise.resolve();
 
+    // Rate limiting state
+    this._connectionFailures = []; // Timestamps of recent failures
+    this._extendedCooldownUntil = 0; // Timestamp when extended cooldown ends
+    this._lastAuthRegenTime = 0; // Timestamp of last auth code regeneration
+
     // Register capability listeners
     this._registerCapabilityListeners();
 
@@ -142,10 +147,48 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Check if connection is rate limited
+   * @throws {Error} - If rate limited
+   */
+  _checkRateLimit() {
+    const now = Date.now();
+
+    // Check extended cooldown
+    if (now < this._extendedCooldownUntil) {
+      const remainingSeconds = Math.ceil((this._extendedCooldownUntil - now) / 1000);
+      throw new Error(`Connection rate limited. Try again in ${remainingSeconds} seconds.`);
+    }
+
+    // Clean up old failures outside the window
+    this._connectionFailures = this._connectionFailures.filter(
+      (timestamp) => now - timestamp < Constants.CONNECTION_FAILURE_WINDOW
+    );
+
+    // Check if too many recent failures
+    if (this._connectionFailures.length >= Constants.MAX_CONNECTION_FAILURES) {
+      this._extendedCooldownUntil = now + Constants.EXTENDED_COOLDOWN;
+      this._connectionFailures = []; // Reset after triggering cooldown
+      const cooldownSeconds = Constants.EXTENDED_COOLDOWN / 1000;
+      this.log(`Too many connection failures. Entering ${cooldownSeconds}s cooldown.`);
+      throw new Error(`Too many connection failures. Try again in ${cooldownSeconds} seconds.`);
+    }
+  }
+
+  /**
+   * Record a connection failure for rate limiting
+   */
+  _recordConnectionFailure() {
+    this._connectionFailures.push(Date.now());
+  }
+
+  /**
    * Connect to the BLE device (persistent connection)
    * @returns {BlePeripheral} - The connected peripheral
    */
   async _connect() {
+    // Check rate limiting before attempting connection
+    this._checkRateLimit();
+
     // Reset idle timer on every connection attempt
     this._resetIdleTimer();
 
@@ -207,6 +250,7 @@ class IntelliventSkyDevice extends Homey.Device {
       this._isConnected = false;
       this._peripheral = null;
       this._characteristics = {};
+      this._recordConnectionFailure();
       throw err;
     } finally {
       this._isConnecting = false;
@@ -310,9 +354,28 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Check if auth code regeneration is allowed (cooldown check)
+   * @returns {boolean} - True if regeneration is allowed
+   */
+  _canRegenerateAuthCode() {
+    const now = Date.now();
+    const timeSinceLastRegen = now - this._lastAuthRegenTime;
+    return timeSinceLastRegen >= Constants.AUTH_REGEN_COOLDOWN;
+  }
+
+  /**
    * Fetch and store authentication code from device
    */
   async _fetchAndStoreAuthCode() {
+    // Check cooldown before regenerating
+    if (!this._canRegenerateAuthCode()) {
+      const remainingSeconds = Math.ceil(
+        (Constants.AUTH_REGEN_COOLDOWN - (Date.now() - this._lastAuthRegenTime)) / 1000
+      );
+      this.log(`Auth code regeneration on cooldown. ${remainingSeconds}s remaining.`);
+      return;
+    }
+
     try {
       const char = this._characteristics.auth;
       if (char) {
@@ -321,7 +384,8 @@ class IntelliventSkyDevice extends Homey.Device {
 
         if (authCode) {
           await this.setSettings({ auth_code: authCode });
-          this.log(`Stored new auth code: ${authCode}`);
+          this._lastAuthRegenTime = Date.now();
+          this.log('Stored new auth code');
         }
       }
     } catch (err) {
