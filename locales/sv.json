@@ -19,7 +19,7 @@
     },
     "hardware_version": {
       "title": "Hårdvaruversion"
-    },
+    }
   },
   "capabilities": {
     "intellivent_mode": {
