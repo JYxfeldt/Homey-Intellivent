@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -43,9 +43,11 @@
       "class": "fan",
       "capabilities": [
         "onoff",
+        "measure_rpm",
         "intellivent_rpm",
         "measure_humidity",
         "measure_temperature",
+        "measure_temperature.average",
         "intellivent_mode",
         "intellivent_humidity_enabled",
         "intellivent_humidity_sensitivity",
@@ -55,6 +57,11 @@
         "intellivent_voc_sensitivity"
       ],
       "capabilitiesOptions": {
+        "measure_temperature.average": {
+          "title": {
+            "en": "Average Temperature"
+          }
+        },
         "intellivent_rpm": {
           "min": 800,
           "max": 2400,
@@ -186,6 +193,21 @@
     }
   ],
   "capabilities": {
+    "measure_rpm": {
+      "type": "number",
+      "title": {
+        "en": "Current RPM"
+      },
+      "units": {
+        "en": "RPM"
+      },
+      "min": 0,
+      "max": 2400,
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true
+    },
     "intellivent_mode": {
       "type": "enum",
       "title": {

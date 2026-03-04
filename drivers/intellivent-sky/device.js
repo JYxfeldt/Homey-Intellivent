@@ -479,12 +479,17 @@ class IntelliventSkyDevice extends Homey.Device {
     // Update mode
     await this.setCapabilityValue('intellivent_mode', sensorData.mode).catch(this.error);
 
-    // Update RPM
-    await this.setCapabilityValue('intellivent_rpm', sensorData.rpm).catch(this.error);
+    // Update live RPM sensor (read-only, actual measured value)
+    await this.setCapabilityValue('measure_rpm', sensorData.rpm).catch(this.error);
 
     // Update temperature
     if (sensorData.temperature > 0) {
       await this.setCapabilityValue('measure_temperature', sensorData.temperature).catch(this.error);
+    }
+
+    // Update average temperature
+    if (sensorData.avgTemperature > 0) {
+      await this.setCapabilityValue('measure_temperature.average', sensorData.avgTemperature).catch(this.error);
     }
 
     // Update humidity

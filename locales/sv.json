@@ -48,6 +48,9 @@
         "pause": "Paus"
       }
     },
+    "measure_rpm": {
+      "title": "Aktuell RPM"
+    },
     "intellivent_rpm": {
       "title": "Fläkthastighet (RPM)"
     },

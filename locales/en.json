@@ -48,6 +48,9 @@
         "pause": "Pause"
       }
     },
+    "measure_rpm": {
+      "title": "Current RPM"
+    },
     "intellivent_rpm": {
       "title": "Fan Speed (RPM)"
     },
