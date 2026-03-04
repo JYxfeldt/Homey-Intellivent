@@ -27,6 +27,9 @@ class IntelliventSkyDevice extends Homey.Device {
     this._extendedCooldownUntil = 0; // Timestamp when extended cooldown ends
     this._lastAuthRegenTime = 0; // Timestamp of last auth code regeneration
 
+    // Ensure new capabilities exist on already-paired devices
+    await this._migrateCapabilities();
+
     // Register capability listeners
     this._registerCapabilityListeners();
 
@@ -54,6 +57,19 @@ class IntelliventSkyDevice extends Homey.Device {
   _checkWriteAccess() {
     if (this._isReadOnly()) {
       throw new Error(this.homey.__('errors.read_only'));
+    }
+  }
+
+  /**
+   * Add capabilities that were introduced after initial pairing
+   */
+  async _migrateCapabilities() {
+    const newCapabilities = ['measure_temperature.average', 'measure_rpm'];
+    for (const cap of newCapabilities) {
+      if (!this.hasCapability(cap)) {
+        this.log(`Adding missing capability: ${cap}`);
+        await this.addCapability(cap);
+      }
     }
   }
 

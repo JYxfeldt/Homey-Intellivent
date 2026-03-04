@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -71,11 +71,6 @@
           },
           "preventTag": false,
           "preventInsights": false
-        },
-        "measure_temperature.average": {
-          "title": {
-            "en": "Average Temperature"
-          }
         }
       },
       "platforms": ["local"],
