@@ -20,18 +20,6 @@
     "hardware_version": {
       "title": "Hårdvaruversion"
     },
-    "humidity_enabled": {
-      "title": "Aktivera fuktighetsdetektering",
-      "hint": "Öka fläkthastigheten automatiskt när fuktigheten stiger"
-    },
-    "humidity_sensitivity": {
-      "title": "Känslighet",
-      "hint": "Hur känslig fuktighetsdetekteringen ska vara"
-    },
-    "humidity_rpm": {
-      "title": "Fläkthastighet (RPM)",
-      "hint": "Fläkthastighet när fuktighet detekteras (800-2400)"
-    }
   },
   "capabilities": {
     "intellivent_mode": {

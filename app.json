@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -140,55 +140,6 @@
             }
           ]
         },
-        {
-          "type": "group",
-          "label": {
-            "en": "Humidity Detection"
-          },
-          "children": [
-            {
-              "id": "humidity_enabled",
-              "type": "checkbox",
-              "label": {
-                "en": "Enable Humidity Detection"
-              },
-              "hint": {
-                "en": "Automatically increase fan speed when humidity rises"
-              },
-              "value": false
-            },
-            {
-              "id": "humidity_sensitivity",
-              "type": "dropdown",
-              "label": {
-                "en": "Sensitivity"
-              },
-              "hint": {
-                "en": "How sensitive the humidity detection should be"
-              },
-              "value": "1",
-              "values": [
-                { "id": "0", "label": { "en": "Low" } },
-                { "id": "1", "label": { "en": "Medium" } },
-                { "id": "2", "label": { "en": "High" } }
-              ]
-            },
-            {
-              "id": "humidity_rpm",
-              "type": "number",
-              "label": {
-                "en": "Fan Speed (RPM)"
-              },
-              "hint": {
-                "en": "Fan speed when humidity is detected (800-2400)"
-              },
-              "value": 1600,
-              "min": 800,
-              "max": 2400,
-              "step": 100
-            }
-          ]
-        }
       ]
     }
   ],

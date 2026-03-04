@@ -550,9 +550,8 @@ class IntelliventSkyDevice extends Homey.Device {
             await this._setConstantSpeed(true, this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM);
             break;
           case 'humidity': {
-            // Use configured humidity settings
-            const sensitivity = parseInt(this.getSetting('humidity_sensitivity') || '1', 10);
-            const humidityRpm = this.getSetting('humidity_rpm') || this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
+            const sensitivity = parseInt(this.getCapabilityValue('intellivent_humidity_sensitivity') || '1', 10);
+            const humidityRpm = this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
             await this._setHumidity(true, sensitivity, humidityRpm);
             break;
           }
@@ -619,12 +618,9 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setHumidity(enabled, sensitivity, rpm);
     });
 
-    // Update settings to reflect the new configuration
-    await this.setSettings({
-      humidity_enabled: enabled,
-      humidity_sensitivity: String(sensitivity),
-      humidity_rpm: rpm,
-    });
+    // Update capabilities
+    await this.setCapabilityValue('intellivent_humidity_enabled', enabled);
+    await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity));
 
     // If enabled, update mode
     if (enabled) {
@@ -641,14 +637,13 @@ class IntelliventSkyDevice extends Homey.Device {
   async setHumidityEnabled(enabled) {
     this._checkWriteAccess();
     const sensitivity = parseInt(this.getCapabilityValue('intellivent_humidity_sensitivity') || '1', 10);
-    const rpm = this.getSetting('humidity_rpm') || this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
+    const rpm = this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
 
     await this._withConnection(async () => {
       await this._setHumidity(enabled, sensitivity, rpm);
     });
 
     await this.setCapabilityValue('intellivent_humidity_enabled', enabled);
-    await this.setSettings({ humidity_enabled: enabled });
 
     this.log(`Humidity detection ${enabled ? 'enabled' : 'disabled'}`);
   }
@@ -659,15 +654,13 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setHumiditySensitivity(sensitivity) {
     this._checkWriteAccess();
-    const rpm = this.getSetting('humidity_rpm') || this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
+    const rpm = this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
     const enabled = this.getCapabilityValue('intellivent_humidity_enabled') !== false;
 
     await this._withConnection(async () => {
       await this._setHumidity(enabled, sensitivity, rpm);
     });
 
-    // Update settings
-    await this.setSettings({ humidity_sensitivity: String(sensitivity) });
     await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity));
 
     this.log(`Humidity sensitivity set to ${sensitivity}`);
@@ -824,38 +817,6 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async onSettings({ oldSettings, newSettings, changedKeys }) {
     this.log('Intellivent Sky device settings were changed');
-
-    // Check if humidity settings changed
-    const humidityKeys = ['humidity_enabled', 'humidity_sensitivity', 'humidity_rpm'];
-    const humidityChanged = changedKeys.some(key => humidityKeys.includes(key));
-
-    if (humidityChanged) {
-      // Check for read-only mode (use newSettings in case auth_code changed)
-      const authCode = newSettings.auth_code || this.getSetting('auth_code');
-      if (authCode === '00000000') {
-        throw new Error(this.homey.__('errors.read_only'));
-      }
-
-      const enabled = newSettings.humidity_enabled;
-      const sensitivity = parseInt(newSettings.humidity_sensitivity, 10);
-      const rpm = newSettings.humidity_rpm;
-
-      this.log(`Updating humidity settings: enabled=${enabled}, sensitivity=${sensitivity}, rpm=${rpm}`);
-
-      try {
-        await this._withConnection(async () => {
-          await this._setHumidity(enabled, sensitivity, rpm);
-        });
-
-        // Update mode capability if humidity is enabled
-        if (enabled) {
-          await this.setCapabilityValue('intellivent_mode', 'humidity');
-        }
-      } catch (err) {
-        this.error(`Failed to update humidity settings: ${err.message}`);
-        throw new Error(this.homey.__('errors.write_failed'));
-      }
-    }
   }
 
   /**
