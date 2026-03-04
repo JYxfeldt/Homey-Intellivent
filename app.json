@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -47,7 +47,6 @@
         "intellivent_rpm",
         "measure_humidity",
         "measure_temperature",
-        "measure_temperature.average",
         "intellivent_mode",
         "intellivent_humidity_enabled",
         "intellivent_humidity_sensitivity",
@@ -57,11 +56,6 @@
         "intellivent_voc_sensitivity"
       ],
       "capabilitiesOptions": {
-        "measure_temperature.average": {
-          "title": {
-            "en": "Average Temperature"
-          }
-        },
         "intellivent_rpm": {
           "min": 800,
           "max": 2400,

@@ -64,7 +64,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * Add capabilities that were introduced after initial pairing
    */
   async _migrateCapabilities() {
-    const newCapabilities = ['measure_temperature.average', 'measure_rpm'];
+    const newCapabilities = ['measure_rpm'];
     for (const cap of newCapabilities) {
       if (!this.hasCapability(cap)) {
         this.log(`Adding missing capability: ${cap}`);
@@ -501,11 +501,6 @@ class IntelliventSkyDevice extends Homey.Device {
     // Update temperature
     if (sensorData.temperature > 0) {
       await this.setCapabilityValue('measure_temperature', sensorData.temperature).catch(this.error);
-    }
-
-    // Update average temperature
-    if (sensorData.avgTemperature > 0) {
-      await this.setCapabilityValue('measure_temperature.average', sensorData.avgTemperature).catch(this.error);
     }
 
     // Update humidity
