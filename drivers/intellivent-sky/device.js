@@ -487,6 +487,11 @@ class IntelliventSkyDevice extends Homey.Device {
       await this.setCapabilityValue('measure_temperature', sensorData.temperature).catch(this.error);
     }
 
+    // Update average temperature
+    if (sensorData.avgTemperature > 0) {
+      await this.setCapabilityValue('measure_temperature.average', sensorData.avgTemperature).catch(this.error);
+    }
+
     // Update humidity
     if (sensorData.humidity > 0) {
       const currentHumidity = this.getCapabilityValue('measure_humidity');
