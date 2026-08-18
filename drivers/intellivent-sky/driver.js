@@ -23,8 +23,8 @@ class IntelliventSkyDriver extends Homey.Driver {
     const devices = [];
 
     try {
-      // Discover BLE devices
-      const advertisements = await this.homey.ble.discover([], 20000);
+      // Discover BLE devices (ManagerBLE.discover takes no timeout parameter in SDK3)
+      const advertisements = await this.homey.ble.discover();
 
       this.log(`Found ${advertisements.length} BLE devices`);
 
@@ -67,6 +67,20 @@ class IntelliventSkyDriver extends Homey.Driver {
   }
 
   /**
+   * Compare a reported characteristic UUID against a full 128-bit constant.
+   * Homey may report standard 16-bit UUIDs in short form (e.g. '2a24').
+   * @param {string} reported - UUID as reported by Homey
+   * @param {string} expected - Full 128-bit UUID constant
+   * @returns {boolean}
+   */
+  _uuidMatches(reported, expected) {
+    const a = reported.toLowerCase().replace(/-/g, '');
+    const b = expected.toLowerCase().replace(/-/g, '');
+    if (a === b) return true;
+    return a.length === 4 && b === `0000${a}00001000800000805f9b34fb`;
+  }
+
+  /**
    * Try to get additional device information during pairing
    * @param {BleAdvertisement} advertisement - The BLE advertisement
    * @returns {object} - Device information
@@ -83,19 +97,17 @@ class IntelliventSkyDriver extends Homey.Driver {
 
         for (const service of services) {
           for (const characteristic of service.characteristics) {
-            const uuid = characteristic.uuid.toLowerCase();
-
             try {
-              if (uuid === Constants.MODEL_NUMBER.replace(/-/g, '')) {
+              if (this._uuidMatches(characteristic.uuid, Constants.MODEL_NUMBER)) {
                 const data = await characteristic.read();
                 info.modelNumber = data.toString('utf8').trim();
-              } else if (uuid === Constants.FIRMWARE_VERSION.replace(/-/g, '')) {
+              } else if (this._uuidMatches(characteristic.uuid, Constants.FIRMWARE_VERSION)) {
                 const data = await characteristic.read();
                 info.firmwareVersion = data.toString('utf8').trim();
-              } else if (uuid === Constants.HARDWARE_VERSION.replace(/-/g, '')) {
+              } else if (this._uuidMatches(characteristic.uuid, Constants.HARDWARE_VERSION)) {
                 const data = await characteristic.read();
                 info.hardwareVersion = data.toString('utf8').trim();
-              } else if (uuid === Constants.MANUFACTURER_NAME.replace(/-/g, '')) {
+              } else if (this._uuidMatches(characteristic.uuid, Constants.MANUFACTURER_NAME)) {
                 const data = await characteristic.read();
                 info.manufacturerName = data.toString('utf8').trim();
               }
