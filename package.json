@@ -5,7 +5,8 @@
   "main": "app.js",
   "scripts": {
     "lint": "eslint --ext .js .",
-    "lint:fix": "eslint --ext .js . --fix"
+    "lint:fix": "eslint --ext .js . --fix",
+    "test": "node --test"
   },
   "author": "JYxfeldt",
   "license": "MIT",
