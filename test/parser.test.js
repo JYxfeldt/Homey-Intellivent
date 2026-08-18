@@ -40,7 +40,7 @@ test('parseSensorData reads the pyfreshintellivent field layout', () => {
   assert.strictEqual(data.status, true);
   assert.strictEqual(data.mode, 'humidity');
   assert.strictEqual(data.modeRaw, 49);
-  assert.strictEqual(data.humidity, Math.round(Math.log(400) * 10)); // 60
+  assert.strictEqual(data.humidity, Math.round(Math.log(400) * 100) / 10); // 59.9, one decimal as upstream
   assert.strictEqual(data.temperature, 23.5);
   assert.strictEqual(data.avgTemperature, 22.8);
   assert.strictEqual(data.rpm, 1375);

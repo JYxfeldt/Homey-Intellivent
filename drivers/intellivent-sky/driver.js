@@ -31,8 +31,14 @@ class IntelliventSkyDriver extends Homey.Driver {
       for (const advertisement of advertisements) {
         const localName = advertisement.localName || '';
 
-        // Filter for Intellivent devices
-        if (localName.toLowerCase().includes(Constants.DEVICE_NAME_FILTER.toLowerCase())) {
+        // Filter for Intellivent devices: by name, or - like the upstream
+        // pyfreshintellivent scanner - by the advertised Device Information
+        // service when the advertisement carries no usable name
+        const nameMatch = localName.toLowerCase().includes(Constants.DEVICE_NAME_FILTER.toLowerCase());
+        const serviceMatch = (advertisement.serviceUuids || [])
+          .some((u) => this._uuidMatches(u, Constants.UUID_SERVICE));
+
+        if (nameMatch || (serviceMatch && !localName)) {
           this.log(`Found Intellivent device: ${localName} (${advertisement.uuid})`);
 
           // Try to get additional device info

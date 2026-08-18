@@ -21,7 +21,16 @@ class IntelliventSkyDevice extends Homey.Device {
     this._notificationsSubscribed = false;
     this._reconnectAttempts = 0;
     this._operationQueue = Promise.resolve();
+    this._updateChain = Promise.resolve();
     this._isDeleted = false;
+
+    // Device-held configuration cached at readback, used to rebuild shared
+    // payloads without clobbering values set outside Homey
+    this._deviceConfig = {
+      humidityRpm: null,
+      lightDetectionRaw: null,
+      vocDetectionRaw: null,
+    };
 
     // Rate limiting state
     this._connectionFailures = []; // Timestamps of recent failures
@@ -80,6 +89,28 @@ class IntelliventSkyDevice extends Homey.Device {
         this.log(`Adding missing capability: ${cap}`);
         await this.addCapability(cap);
       }
+    }
+
+    // v0.2.0 changed the sensitivity enum ids from 0/1/2 to the protocol wire
+    // values 1/2/3 (same labels, same order). One-shot migration of stored
+    // values from devices paired on earlier versions.
+    if (!this.getStoreValue('sensitivityIdsMigrated')) {
+      const idMap = { 0: '1', 1: '2', 2: '3' };
+      const sensitivityCaps = [
+        'intellivent_humidity_sensitivity',
+        'intellivent_light_sensitivity',
+        'intellivent_voc_sensitivity',
+      ];
+      for (const cap of sensitivityCaps) {
+        if (this.hasCapability(cap)) {
+          const mapped = idMap[this.getCapabilityValue(cap)];
+          if (mapped) {
+            this.log(`Migrating ${cap} enum id to ${mapped}`);
+            await this.setCapabilityValue(cap, mapped).catch(this.error);
+          }
+        }
+      }
+      await this.setStoreValue('sensitivityIdsMigrated', true).catch(this.error);
     }
   }
 
@@ -255,6 +286,11 @@ class IntelliventSkyDevice extends Homey.Device {
       this._peripheral = await advertisement.connect();
       this.log('Connected to device');
 
+      if (this._isDeleted) {
+        // Deleted while the connect was pending - don't leave a live connection
+        throw new Error('Device has been deleted');
+      }
+
       // Set up disconnect handler
       this._peripheral.once('disconnect', () => {
         this._isConnected = false;
@@ -284,6 +320,12 @@ class IntelliventSkyDevice extends Homey.Device {
       // Mirror the fan's stored configuration into capabilities (non-fatal)
       await this._syncConfigFromDevice();
 
+      if (!this._peripheral) {
+        // The disconnect handler fired during setup (e.g. mid-readback);
+        // 'disconnected' in the message routes this to the reconnect path
+        throw new Error('Device disconnected during connection setup');
+      }
+
       this._isConnected = true;
       this._reconnectAttempts = 0;
 
@@ -303,13 +345,16 @@ class IntelliventSkyDevice extends Homey.Device {
    * config writes rebuild their payloads from those stale values, silently
    * overwriting settings made from e.g. the Fresh phone app.
    *
-   * Only unambiguous fields are synced: enabled flags, humidity sensitivity
-   * (regular scale both ways) and the constant-speed RPM. Light/VOC
-   * sensitivities are deliberately NOT synced back: per pyfreshintellivent,
-   * their read scales differ from the write scale (light has no 'low', VOC
-   * reads reversed), so a read-back would visibly flip the user's selection.
+   * Only unambiguous fields are synced to capabilities: enabled flags,
+   * humidity sensitivity (regular scale both ways) and the constant-speed
+   * RPM. Light/VOC sensitivities are NOT synced to capabilities: per
+   * pyfreshintellivent, their read scales differ from the write scale (light
+   * has no 'low', VOC reads reversed), so a read-back would visibly flip the
+   * user's selection. Their raw wire values ARE cached, so writes to the
+   * shared light/VOC payload preserve the device's actual settings.
    *
-   * Non-fatal: a failed read never fails the connection.
+   * Each read is isolated: one failing characteristic never blocks the rest,
+   * and a failed readback never fails the connection.
    */
   async _syncConfigFromDevice() {
     // Sensitivity capability ids are the wire write values ('1'..'3')
@@ -319,20 +364,31 @@ class IntelliventSkyDevice extends Homey.Device {
       const humidityChar = this._characteristics.humidity;
       if (humidityChar) {
         const humidity = Parser.parseHumidity(await humidityChar.read());
+        this._deviceConfig.humidityRpm = humidity.rpm;
         await this.setCapabilityValue('intellivent_humidity_enabled', humidity.enabled).catch(this.error);
         const level = levelToCapability[humidity.detection];
         if (level) {
           await this.setCapabilityValue('intellivent_humidity_sensitivity', level).catch(this.error);
         }
       }
+    } catch (err) {
+      this.log(`Humidity config readback failed (non-fatal): ${err.message}`);
+    }
 
+    try {
       const lightVocChar = this._characteristics.lightVoc;
       if (lightVocChar) {
         const lightVoc = Parser.parseLightVoc(await lightVocChar.read());
+        this._deviceConfig.lightDetectionRaw = lightVoc.light.detectionRaw;
+        this._deviceConfig.vocDetectionRaw = lightVoc.voc.detectionRaw;
         await this.setCapabilityValue('intellivent_light_enabled', lightVoc.light.enabled).catch(this.error);
         await this.setCapabilityValue('intellivent_voc_enabled', lightVoc.voc.enabled).catch(this.error);
       }
+    } catch (err) {
+      this.log(`Light/VOC config readback failed (non-fatal): ${err.message}`);
+    }
 
+    try {
       const constantSpeedChar = this._characteristics.constantSpeed;
       if (constantSpeedChar) {
         const constantSpeed = Parser.parseConstantSpeed(await constantSpeedChar.read());
@@ -341,7 +397,7 @@ class IntelliventSkyDevice extends Homey.Device {
         }
       }
     } catch (err) {
-      this.log(`Config readback failed (non-fatal): ${err.message}`);
+      this.log(`Constant speed config readback failed (non-fatal): ${err.message}`);
     }
   }
 
@@ -378,7 +434,7 @@ class IntelliventSkyDevice extends Homey.Device {
       await char.subscribeToNotifications(async (data) => {
         try {
           const sensorData = Parser.parseSensorData(data);
-          await this._updateCapabilities(sensorData);
+          await this._queueCapabilityUpdate(sensorData);
         } catch (err) {
           this.error(`Notification parse error: ${err.message}`);
         }
@@ -605,12 +661,24 @@ class IntelliventSkyDevice extends Homey.Device {
         this.log(`Sensor data: ${JSON.stringify(sensorData)}`);
 
         // Update capabilities
-        await this._updateCapabilities(sensorData);
+        await this._queueCapabilityUpdate(sensorData);
       });
     } catch (err) {
       this.error(`Failed to fetch sensor data: ${err.message}`);
       this.setUnavailable(this.homey.__('errors.connection_failed')).catch(this.error);
     }
+  }
+
+  /**
+   * Serialize capability updates: the heartbeat poll and the notification
+   * callback can otherwise interleave their awaited writes and leave a stale
+   * value as the winner.
+   * @param {object} sensorData - Parsed sensor data
+   */
+  async _queueCapabilityUpdate(sensorData) {
+    const run = this._updateChain.then(() => this._updateCapabilities(sensorData));
+    this._updateChain = run.catch(() => {});
+    return run;
   }
 
   /**
@@ -693,24 +761,19 @@ class IntelliventSkyDevice extends Homey.Device {
             break;
           case 'humidity': {
             const sensitivity = parseInt(this.getCapabilityValue('intellivent_humidity_sensitivity') || '2', 10);
-            const humidityRpm = this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
-            await this._setHumidity(true, sensitivity, humidityRpm);
+            await this._setHumidity(true, sensitivity, this._humidityRpm());
             break;
           }
           case 'light': {
-            // Preserve the VOC channel and both stored sensitivities - the
-            // light/VOC characteristic is written as one payload
-            const lightSens = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '2', 10);
-            const vocOn = this.getCapabilityValue('intellivent_voc_enabled') === true;
-            const vocSens = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '2', 10);
-            await this._setLightVoc(true, lightSens, vocOn, vocSens);
+            // The light/VOC characteristic is written as one payload -
+            // unchanged fields come from the device's own cached values
+            const p = this._lightVocParams({ lightEnabled: true });
+            await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
             break;
           }
           case 'voc': {
-            const lightOn = this.getCapabilityValue('intellivent_light_enabled') === true;
-            const lightSens = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '2', 10);
-            const vocSens = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '2', 10);
-            await this._setLightVoc(lightOn, lightSens, true, vocSens);
+            const p = this._lightVocParams({ vocEnabled: true });
+            await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
             break;
           }
           case 'boost':
@@ -727,12 +790,61 @@ class IntelliventSkyDevice extends Homey.Device {
         }
       });
 
-      // Update capability
-      await this.setCapabilityValue('intellivent_mode', mode);
+      // Update capability and fire the mode_changed trigger for
+      // Homey-originated changes (the device-report path won't see a change
+      // after this optimistic update)
+      await this._setModeCapability(mode);
     } catch (err) {
       this.error(`Failed to set mode: ${err.message}`);
       throw err;
     }
+  }
+
+  /**
+   * Set the mode capability and fire mode_changed if it actually changed
+   * @param {string} mode - The new mode
+   */
+  async _setModeCapability(mode) {
+    const previous = this.getCapabilityValue('intellivent_mode');
+    await this.setCapabilityValue('intellivent_mode', mode);
+    if (previous !== mode) {
+      await this.homey.flow.getDeviceTriggerCard('mode_changed')
+        .trigger(this, { mode })
+        .catch(this.error);
+    }
+  }
+
+  /**
+   * The RPM to use for humidity-mode writes: the device's own configured
+   * humidity RPM when known, otherwise the RPM capability
+   * @returns {number}
+   */
+  _humidityRpm() {
+    return this._deviceConfig.humidityRpm
+      ?? (this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM);
+  }
+
+  /**
+   * Assemble the full light/VOC payload for a partial change. The
+   * characteristic is written as one payload, so unchanged fields must come
+   * from the device's own values (cached at readback), falling back to the
+   * capabilities only when no readback has succeeded yet.
+   * @param {object} overrides - Fields the caller is deliberately changing
+   * @returns {object} - {lightEnabled, lightDetection, vocEnabled, vocDetection}
+   */
+  _lightVocParams(overrides = {}) {
+    return {
+      lightEnabled: overrides.lightEnabled
+        ?? (this.getCapabilityValue('intellivent_light_enabled') === true),
+      lightDetection: overrides.lightDetection
+        ?? this._deviceConfig.lightDetectionRaw
+        ?? parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '2', 10),
+      vocEnabled: overrides.vocEnabled
+        ?? (this.getCapabilityValue('intellivent_voc_enabled') === true),
+      vocDetection: overrides.vocDetection
+        ?? this._deviceConfig.vocDetectionRaw
+        ?? parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '2', 10),
+    };
   }
 
   /**
@@ -755,7 +867,7 @@ class IntelliventSkyDevice extends Homey.Device {
     await this._withConnection(async () => {
       await this._setBoost(true, rpm, duration);
     });
-    await this.setCapabilityValue('intellivent_mode', 'boost');
+    await this._setModeCapability('boost');
   }
 
   /**
@@ -776,7 +888,7 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // If enabled, update mode
     if (enabled) {
-      await this.setCapabilityValue('intellivent_mode', 'humidity');
+      await this._setModeCapability('humidity');
     }
 
     this.log(`Humidity detection configured: enabled=${enabled}, sensitivity=${sensitivity}, rpm=${rpm}`);
@@ -789,10 +901,9 @@ class IntelliventSkyDevice extends Homey.Device {
   async setHumidityEnabled(enabled) {
     this._checkWriteAccess();
     const sensitivity = parseInt(this.getCapabilityValue('intellivent_humidity_sensitivity') || '2', 10);
-    const rpm = this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
 
     await this._withConnection(async () => {
-      await this._setHumidity(enabled, sensitivity, rpm);
+      await this._setHumidity(enabled, sensitivity, this._humidityRpm());
     });
 
     await this.setCapabilityValue('intellivent_humidity_enabled', enabled);
@@ -806,11 +917,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setHumiditySensitivity(sensitivity) {
     this._checkWriteAccess();
-    const rpm = this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
     const enabled = this.getCapabilityValue('intellivent_humidity_enabled') !== false;
 
     await this._withConnection(async () => {
-      await this._setHumidity(enabled, sensitivity, rpm);
+      await this._setHumidity(enabled, sensitivity, this._humidityRpm());
     });
 
     await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity));
@@ -824,12 +934,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setLightEnabled(enabled) {
     this._checkWriteAccess();
-    const lightSensitivity = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '2', 10);
-    const vocEnabled = this.getCapabilityValue('intellivent_voc_enabled') === true;
-    const vocSensitivity = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '2', 10);
+    const p = this._lightVocParams({ lightEnabled: enabled });
 
     await this._withConnection(async () => {
-      await this._setLightVoc(enabled, lightSensitivity, vocEnabled, vocSensitivity);
+      await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
     await this.setCapabilityValue('intellivent_light_enabled', enabled);
@@ -843,12 +951,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setLightSensitivity(sensitivity) {
     this._checkWriteAccess();
-    const lightEnabled = this.getCapabilityValue('intellivent_light_enabled') === true;
-    const vocEnabled = this.getCapabilityValue('intellivent_voc_enabled') === true;
-    const vocSensitivity = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '2', 10);
+    const p = this._lightVocParams({ lightDetection: sensitivity });
 
     await this._withConnection(async () => {
-      await this._setLightVoc(lightEnabled, sensitivity, vocEnabled, vocSensitivity);
+      await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
     await this.setCapabilityValue('intellivent_light_sensitivity', String(sensitivity));
@@ -862,12 +968,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setVocEnabled(enabled) {
     this._checkWriteAccess();
-    const lightEnabled = this.getCapabilityValue('intellivent_light_enabled') === true;
-    const lightSensitivity = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '2', 10);
-    const vocSensitivity = parseInt(this.getCapabilityValue('intellivent_voc_sensitivity') || '2', 10);
+    const p = this._lightVocParams({ vocEnabled: enabled });
 
     await this._withConnection(async () => {
-      await this._setLightVoc(lightEnabled, lightSensitivity, enabled, vocSensitivity);
+      await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
     await this.setCapabilityValue('intellivent_voc_enabled', enabled);
@@ -881,12 +985,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setVocSensitivity(sensitivity) {
     this._checkWriteAccess();
-    const lightEnabled = this.getCapabilityValue('intellivent_light_enabled') === true;
-    const lightSensitivity = parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '2', 10);
-    const vocEnabled = this.getCapabilityValue('intellivent_voc_enabled') === true;
+    const p = this._lightVocParams({ vocDetection: sensitivity });
 
     await this._withConnection(async () => {
-      await this._setLightVoc(lightEnabled, lightSensitivity, vocEnabled, sensitivity);
+      await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
     await this.setCapabilityValue('intellivent_voc_sensitivity', String(sensitivity));
@@ -908,6 +1010,8 @@ class IntelliventSkyDevice extends Homey.Device {
     if (!char) throw new Error('Humidity characteristic not found');
     const data = Parser.encodeHumidity(enabled, detection, rpm);
     await char.write(data);
+    // The write succeeded - the device now holds this value
+    this._deviceConfig.humidityRpm = Parser.validateRpm(rpm);
   }
 
   async _setLightVoc(lightEnabled, lightDetection, vocEnabled, vocDetection) {
@@ -915,6 +1019,9 @@ class IntelliventSkyDevice extends Homey.Device {
     if (!char) throw new Error('Light/VOC characteristic not found');
     const data = Parser.encodeLightVoc(lightEnabled, lightDetection, vocEnabled, vocDetection);
     await char.write(data);
+    // The write succeeded - the device now holds these values
+    this._deviceConfig.lightDetectionRaw = Parser.validateDetection(lightDetection);
+    this._deviceConfig.vocDetectionRaw = Parser.validateDetection(vocDetection);
   }
 
   async _setTimer(duration, delayEnabled, delayMinutes, rpm) {
