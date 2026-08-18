@@ -18,7 +18,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._pollInterval = null;
     this._isConnecting = false;
     this._isConnected = false;
-    this._connectionIdleTimer = null;
+    this._notificationsSubscribed = false;
     this._reconnectAttempts = 0;
     this._operationQueue = Promise.resolve();
 
@@ -148,15 +148,17 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * Start polling for sensor data
+   * Start polling for sensor data (fallback when notifications are unavailable)
    */
   _startPolling() {
+    if (this._notificationsSubscribed) return;
+
     // Clear any existing interval
     if (this._pollInterval) {
       this.homey.clearInterval(this._pollInterval);
     }
 
-    // Poll every minute
+    // Poll every 5 minutes as heartbeat fallback
     this._pollInterval = this.homey.setInterval(() => {
       this._fetchSensorData();
     }, Constants.POLL_INTERVAL);
@@ -205,9 +207,6 @@ class IntelliventSkyDevice extends Homey.Device {
     // Check rate limiting before attempting connection
     this._checkRateLimit();
 
-    // Reset idle timer on every connection attempt
-    this._resetIdleTimer();
-
     // Already connected
     if (this._isConnected && this._peripheral) {
       return this._peripheral;
@@ -247,6 +246,7 @@ class IntelliventSkyDevice extends Homey.Device {
         this._isConnected = false;
         this._peripheral = null;
         this._characteristics = {};
+        this._notificationsSubscribed = false;
       });
 
       // Discover services and characteristics
@@ -258,6 +258,9 @@ class IntelliventSkyDevice extends Homey.Device {
       // Authenticate if we have an auth code
       await this._authenticate();
 
+      // Subscribe to notifications for real-time updates
+      await this._subscribeToNotifications();
+
       this._isConnected = true;
       this._reconnectAttempts = 0;
 
@@ -266,6 +269,7 @@ class IntelliventSkyDevice extends Homey.Device {
       this._isConnected = false;
       this._peripheral = null;
       this._characteristics = {};
+      this._notificationsSubscribed = false;
       this._recordConnectionFailure();
       throw err;
     } finally {
@@ -274,19 +278,35 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * Reset the connection idle timer
+   * Subscribe to BLE notifications on DEVICE_STATUS characteristic.
+   * Falls back to polling if the characteristic does not support notifications.
    */
-  _resetIdleTimer() {
-    // Clear existing timer
-    if (this._connectionIdleTimer) {
-      this.homey.clearTimeout(this._connectionIdleTimer);
-    }
+  async _subscribeToNotifications() {
+    const char = this._characteristics.deviceStatus;
+    if (!char) return;
 
-    // Set new idle timer
-    this._connectionIdleTimer = this.homey.setTimeout(() => {
-      this.log('Connection idle timeout reached, disconnecting...');
-      this._disconnect();
-    }, Constants.CONNECTION_IDLE_TIMEOUT);
+    try {
+      await char.subscribeToNotifications(async (data) => {
+        try {
+          const sensorData = Parser.parseSensorData(data);
+          await this._updateCapabilities(sensorData);
+        } catch (err) {
+          this.error(`Notification parse error: ${err.message}`);
+        }
+      });
+      this._notificationsSubscribed = true;
+      this.log('Subscribed to DEVICE_STATUS notifications');
+
+      // Stop polling since we now get push updates
+      if (this._pollInterval) {
+        this.homey.clearInterval(this._pollInterval);
+        this._pollInterval = null;
+      }
+    } catch (err) {
+      this.log(`Notifications not supported, falling back to polling: ${err.message}`);
+      this._notificationsSubscribed = false;
+      this._startPolling();
+    }
   }
 
   /**
@@ -294,13 +314,20 @@ class IntelliventSkyDevice extends Homey.Device {
    * @param {boolean} force - Force disconnect even if operations pending
    */
   async _disconnect(force = false) {
-    // Clear idle timer
-    if (this._connectionIdleTimer) {
-      this.homey.clearTimeout(this._connectionIdleTimer);
-      this._connectionIdleTimer = null;
-    }
-
     if (this._peripheral) {
+      // Unsubscribe from notifications before disconnecting
+      if (this._notificationsSubscribed) {
+        const char = this._characteristics.deviceStatus;
+        if (char) {
+          try {
+            await char.unsubscribeFromNotifications();
+          } catch (err) {
+            this.log(`Error unsubscribing: ${err.message}`);
+          }
+        }
+        this._notificationsSubscribed = false;
+      }
+
       try {
         await this._peripheral.disconnect();
         this.log('Disconnected from device');
@@ -424,8 +451,6 @@ class IntelliventSkyDevice extends Homey.Device {
         try {
           await this._connect();
           const result = await operation();
-          // Reset idle timer after successful operation
-          this._resetIdleTimer();
           return result;
         } catch (err) {
           lastError = err;
@@ -833,13 +858,7 @@ class IntelliventSkyDevice extends Homey.Device {
       this._pollInterval = null;
     }
 
-    // Clear idle timer
-    if (this._connectionIdleTimer) {
-      this.homey.clearTimeout(this._connectionIdleTimer);
-      this._connectionIdleTimer = null;
-    }
-
-    // Disconnect
+    // Disconnect (also unsubscribes from notifications)
     await this._disconnect(true);
   }
 
