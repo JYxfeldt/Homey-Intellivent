@@ -665,6 +665,14 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // Device is available
     await this.setAvailable().catch(this.error);
+
+    // Surface unauthenticated state: the fan silently ignores writes when not
+    // authenticated, which would otherwise look like working control
+    if (!sensorData.authenticated && !this._isReadOnly()) {
+      await this.setWarning(this.homey.__('errors.not_authenticated')).catch(this.error);
+    } else {
+      await this.unsetWarning().catch(this.error);
+    }
   }
 
   /**

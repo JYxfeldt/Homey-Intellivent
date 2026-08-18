@@ -7,7 +7,8 @@
     "authentication_failed": "Autentisering misslyckades. Parkoppla enheten igen.",
     "write_failed": "Kunde inte skicka kommando till enheten.",
     "read_failed": "Kunde inte läsa data från enheten.",
-    "read_only": "Enheten är i skrivskyddat läge. Parkoppla enheten korrekt för att aktivera styrning."
+    "read_only": "Enheten är i skrivskyddat läge. Parkoppla enheten korrekt för att aktivera styrning.",
+    "not_authenticated": "Inte autentiserad mot fläkten - kommandon ignoreras. Sätt fläkten i parkopplingsläge och parkoppla igen."
   },
   "settings": {
     "auth_code": {

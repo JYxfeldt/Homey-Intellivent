@@ -7,7 +7,8 @@
     "authentication_failed": "Authentication failed. Please re-pair the device.",
     "write_failed": "Failed to send command to device.",
     "read_failed": "Failed to read data from device.",
-    "read_only": "Device is in read-only mode. Please pair the device properly to enable control."
+    "read_only": "Device is in read-only mode. Please pair the device properly to enable control.",
+    "not_authenticated": "Not authenticated with the fan - commands will be ignored. Put the fan in pairing mode and re-pair."
   },
   "settings": {
     "auth_code": {
