@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.1.15",
+  "version": "0.2.0",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -14,7 +14,7 @@
   "tags": {
     "en": ["ventilation", "fan", "bathroom", "intellivent", "fresh", "bluetooth", "ble"]
   },
-  "permissions": [],
+  "permissions": ["homey:wireless:ble"],
   "images": {
     "small": "/assets/images/small.png",
     "large": "/assets/images/large.png",
@@ -249,9 +249,9 @@
         "en": "Humidity Sensitivity"
       },
       "values": [
-        { "id": "0", "title": { "en": "Low" } },
-        { "id": "1", "title": { "en": "Medium" } },
-        { "id": "2", "title": { "en": "High" } }
+        { "id": "1", "title": { "en": "Low" } },
+        { "id": "2", "title": { "en": "Medium" } },
+        { "id": "3", "title": { "en": "High" } }
       ],
       "getable": true,
       "setable": true,
@@ -272,9 +272,9 @@
         "en": "Light Sensitivity"
       },
       "values": [
-        { "id": "0", "title": { "en": "Low" } },
-        { "id": "1", "title": { "en": "Medium" } },
-        { "id": "2", "title": { "en": "High" } }
+        { "id": "1", "title": { "en": "Low" } },
+        { "id": "2", "title": { "en": "Medium" } },
+        { "id": "3", "title": { "en": "High" } }
       ],
       "getable": true,
       "setable": true,
@@ -295,9 +295,9 @@
         "en": "Smell Sensitivity"
       },
       "values": [
-        { "id": "0", "title": { "en": "Low" } },
-        { "id": "1", "title": { "en": "Medium" } },
-        { "id": "2", "title": { "en": "High" } }
+        { "id": "1", "title": { "en": "Low" } },
+        { "id": "2", "title": { "en": "Medium" } },
+        { "id": "3", "title": { "en": "High" } }
       ],
       "getable": true,
       "setable": true,
@@ -522,9 +522,9 @@
               "en": "Sensitivity"
             },
             "values": [
-              { "id": "0", "label": { "en": "Low" } },
-              { "id": "1", "label": { "en": "Medium" } },
-              { "id": "2", "label": { "en": "High" } }
+              { "id": "1", "label": { "en": "Low" } },
+              { "id": "2", "label": { "en": "Medium" } },
+              { "id": "3", "label": { "en": "High" } }
             ]
           },
           {

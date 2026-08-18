@@ -48,9 +48,9 @@
     "intellivent_humidity_sensitivity": {
       "title": "Fuktighetskänslighet",
       "values": {
-        "0": "Låg",
-        "1": "Medium",
-        "2": "Hög"
+        "1": "Låg",
+        "2": "Medium",
+        "3": "Hög"
       }
     },
     "intellivent_light_enabled": {
@@ -59,9 +59,9 @@
     "intellivent_light_sensitivity": {
       "title": "Ljuskänslighet",
       "values": {
-        "0": "Låg",
-        "1": "Medium",
-        "2": "Hög"
+        "1": "Låg",
+        "2": "Medium",
+        "3": "Hög"
       }
     },
     "intellivent_voc_enabled": {
@@ -70,9 +70,9 @@
     "intellivent_voc_sensitivity": {
       "title": "Luktkänslighet",
       "values": {
-        "0": "Låg",
-        "1": "Medium",
-        "2": "Hög"
+        "1": "Låg",
+        "2": "Medium",
+        "3": "Hög"
       }
     }
   },

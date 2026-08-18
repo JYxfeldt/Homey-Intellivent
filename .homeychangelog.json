@@ -1,5 +1,8 @@
 {
   "1.0.0": {
     "en": "Initial release with support for Intellivent Sky devices"
+  },
+  "0.2.0": {
+    "en": "Protocol fixes verified against pyfreshintellivent (mode map, sensitivity levels, airing payload, sensor layout), BLE reliability fixes (operation queue, on/off tile, reconnect heartbeat), and the required BLE permission"
   }
 }
