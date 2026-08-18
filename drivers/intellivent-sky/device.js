@@ -559,17 +559,19 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._writeAuthCode(authCode);
     } catch (err) {
       this.error(`Authentication failed: ${err.message}`);
-      // Try to fetch a new auth code, and if that produces a usable one,
-      // authenticate this session with it
+      // Try to fetch a new auth code, and if that produces a different
+      // usable one, authenticate this session with it
       await this._fetchAndStoreAuthCode();
       const refreshed = this.getSetting('auth_code');
       if (refreshed && refreshed !== '00000000' && refreshed !== authCode) {
-        try {
-          await this._writeAuthCode(refreshed);
-        } catch (retryErr) {
-          this.error(`Authentication retry failed: ${retryErr.message}`);
-        }
+        await this._writeAuthCode(refreshed);
+        return;
       }
+      // A usable code exists but this session could not be authenticated.
+      // Fail the connect: a persistent unauthenticated session would execute
+      // every queued command with the fan silently ignoring it. The retry
+      // path reconnects and authentication runs again.
+      throw err;
     }
   }
 
@@ -579,7 +581,11 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async _writeAuthCode(authCode) {
     const char = this._characteristics.auth;
-    if (!char) return;
+    if (!char) {
+      // Resolving here would let _authenticate() report success without any
+      // auth write, silently leaving the session unauthenticated
+      throw new Error('AUTH characteristic not found');
+    }
     const authBuffer = Parser.encodeAuthCode(authCode);
     await char.write(authBuffer);
     this.log('Authentication successful');
@@ -627,7 +633,13 @@ class IntelliventSkyDevice extends Homey.Device {
         }
 
         await this.setSettings({ auth_code: authCode });
-        this._lastAuthRegenTime = Date.now();
+        // Only a REAL code arms the regeneration cooldown. Storing the
+        // 00000000 marker must not: it would block the pairing-mode recovery
+        // path for the whole cooldown window right when the user is trying
+        // to pair (reconnect attempts are already rate limited separately).
+        if (authCode !== '00000000') {
+          this._lastAuthRegenTime = Date.now();
+        }
         this.log('Stored new auth code');
       }
     } catch (err) {
