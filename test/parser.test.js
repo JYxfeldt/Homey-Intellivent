@@ -80,6 +80,7 @@ test('detection levels encode as 1=low 2=medium 3=high', () => {
   assert.strictEqual(Parser.validateDetection('high'), 3);
   assert.strictEqual(Parser.validateDetection(2), 2);
   assert.strictEqual(Parser.validateDetection(9), 3); // clamped
+  assert.strictEqual(Parser.validateDetection(0), 1); // legacy v0.1.x "low" floor-clamped
 });
 
 test('encodeHumidity writes wire sensitivity values', () => {

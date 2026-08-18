@@ -24,13 +24,11 @@ class IntelliventSkyDevice extends Homey.Device {
     this._updateChain = Promise.resolve();
     this._isDeleted = false;
 
-    // Device-held configuration cached at readback, used to rebuild shared
-    // payloads without clobbering values set outside Homey
-    this._deviceConfig = {
-      humidityRpm: null,
-      lightDetectionRaw: null,
-      vocDetectionRaw: null,
-    };
+    // Device-held configuration cached per connection (readback + own
+    // writes), used to rebuild shared payloads without clobbering values set
+    // outside Homey. Cleared on teardown - it is only trusted while the
+    // connection it was read on is alive.
+    this._deviceConfig = {};
 
     // Rate limiting state
     this._connectionFailures = []; // Timestamps of recent failures
@@ -93,8 +91,19 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // v0.2.0 changed the sensitivity enum ids from 0/1/2 to the protocol wire
     // values 1/2/3 (same labels, same order). One-shot migration of stored
-    // values from devices paired on earlier versions.
+    // values from devices paired on earlier versions. The flag is written
+    // FIRST: if it fails, nothing is migrated (values stay old, retried next
+    // boot); the reverse order could re-run a completed migration and bump
+    // every sensitivity one more level.
     if (!this.getStoreValue('sensitivityIdsMigrated')) {
+      try {
+        await this.setStoreValue('sensitivityIdsMigrated', true);
+      } catch (err) {
+        // Can't persist the flag - defer the whole migration to a later boot
+        // rather than risk re-running it (or failing device init)
+        this.error(`Could not persist migration flag, deferring migration: ${err.message}`);
+        return;
+      }
       const idMap = { 0: '1', 1: '2', 2: '3' };
       const sensitivityCaps = [
         'intellivent_humidity_sensitivity',
@@ -110,7 +119,6 @@ class IntelliventSkyDevice extends Homey.Device {
           }
         }
       }
-      await this.setStoreValue('sensitivityIdsMigrated', true).catch(this.error);
     }
   }
 
@@ -199,6 +207,8 @@ class IntelliventSkyDevice extends Homey.Device {
    * dropped connection would otherwise never be detected.
    */
   _startPolling() {
+    if (this._isDeleted) return;
+
     // Clear any existing interval
     if (this._pollInterval) {
       this.homey.clearInterval(this._pollInterval);
@@ -291,12 +301,17 @@ class IntelliventSkyDevice extends Homey.Device {
         throw new Error('Device has been deleted');
       }
 
-      // Set up disconnect handler
-      this._peripheral.once('disconnect', () => {
+      // Set up disconnect handler. Capture the peripheral: a late event from
+      // an already-torn-down peripheral must not null out a newer connection.
+      const peripheral = this._peripheral;
+      peripheral.once('disconnect', () => {
+        if (this._peripheral !== peripheral) return;
+
         this._isConnected = false;
         this._peripheral = null;
         this._characteristics = {};
         this._notificationsSubscribed = false;
+        this._deviceConfig = {};
 
         if (this._isDeleted) return;
 
@@ -320,9 +335,10 @@ class IntelliventSkyDevice extends Homey.Device {
       // Mirror the fan's stored configuration into capabilities (non-fatal)
       await this._syncConfigFromDevice();
 
-      if (!this._peripheral) {
-        // The disconnect handler fired during setup (e.g. mid-readback);
-        // 'disconnected' in the message routes this to the reconnect path
+      if (!this._peripheral || this._peripheral.isConnected === false) {
+        // The connection died during setup (the disconnect handler fired, or
+        // the link dropped without an event - sdk-issues#315); 'disconnected'
+        // in the message routes this to the reconnect path
         throw new Error('Device disconnected during connection setup');
       }
 
@@ -379,7 +395,9 @@ class IntelliventSkyDevice extends Homey.Device {
       const lightVocChar = this._characteristics.lightVoc;
       if (lightVocChar) {
         const lightVoc = Parser.parseLightVoc(await lightVocChar.read());
+        this._deviceConfig.lightEnabled = lightVoc.light.enabled;
         this._deviceConfig.lightDetectionRaw = lightVoc.light.detectionRaw;
+        this._deviceConfig.vocEnabled = lightVoc.voc.enabled;
         this._deviceConfig.vocDetectionRaw = lightVoc.voc.detectionRaw;
         await this.setCapabilityValue('intellivent_light_enabled', lightVoc.light.enabled).catch(this.error);
         await this.setCapabilityValue('intellivent_voc_enabled', lightVoc.voc.enabled).catch(this.error);
@@ -392,7 +410,10 @@ class IntelliventSkyDevice extends Homey.Device {
       const constantSpeedChar = this._characteristics.constantSpeed;
       if (constantSpeedChar) {
         const constantSpeed = Parser.parseConstantSpeed(await constantSpeedChar.read());
-        if (constantSpeed.rpm >= Constants.MIN_RPM && constantSpeed.rpm <= Constants.MAX_RPM) {
+        // Populate-once: the RPM slider is a control, not a sensor - syncing
+        // it on every reconnect would snap back a value the user just chose
+        if (this.getCapabilityValue('intellivent_rpm') === null
+          && constantSpeed.rpm >= Constants.MIN_RPM && constantSpeed.rpm <= Constants.MAX_RPM) {
           await this.setCapabilityValue('intellivent_rpm', constantSpeed.rpm).catch(this.error);
         }
       }
@@ -412,6 +433,8 @@ class IntelliventSkyDevice extends Homey.Device {
     this._peripheral = null;
     this._characteristics = {};
     this._notificationsSubscribed = false;
+    // Cached device config is only trusted for the connection it was read on
+    this._deviceConfig = {};
 
     if (peripheral) {
       try {
@@ -511,29 +534,55 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * Authenticate with the device
+   * Authenticate the current BLE session.
+   * Fetching and authenticating are separate operations on the fan
+   * (pyfreshintellivent: fetch_authentication_code reads, authenticate
+   * writes) - a freshly fetched code must still be WRITTEN in this session,
+   * otherwise the persistent connection stays unauthenticated and the fan
+   * silently ignores every command until the next reconnect.
    */
   async _authenticate() {
-    const authCode = this.getSetting('auth_code');
+    let authCode = this.getSetting('auth_code');
 
-    if (!authCode) {
-      this.log('No auth code stored, attempting to fetch...');
+    if (!authCode || authCode === '00000000') {
+      // No code yet, or only the not-in-pairing-mode marker: try to fetch.
+      // This is also the recovery path for a device that was first paired
+      // outside pairing mode - putting the fan in pairing mode and letting
+      // it reconnect picks up a real code without re-pairing.
+      this.log('No usable auth code stored, attempting to fetch...');
       await this._fetchAndStoreAuthCode();
-      return;
+      authCode = this.getSetting('auth_code');
+      if (!authCode || authCode === '00000000') return;
     }
 
     try {
-      const char = this._characteristics.auth;
-      if (char) {
-        const authBuffer = Parser.encodeAuthCode(authCode);
-        await char.write(authBuffer);
-        this.log('Authentication successful');
-      }
+      await this._writeAuthCode(authCode);
     } catch (err) {
       this.error(`Authentication failed: ${err.message}`);
-      // Try to fetch a new auth code
+      // Try to fetch a new auth code, and if that produces a usable one,
+      // authenticate this session with it
       await this._fetchAndStoreAuthCode();
+      const refreshed = this.getSetting('auth_code');
+      if (refreshed && refreshed !== '00000000' && refreshed !== authCode) {
+        try {
+          await this._writeAuthCode(refreshed);
+        } catch (retryErr) {
+          this.error(`Authentication retry failed: ${retryErr.message}`);
+        }
+      }
     }
+  }
+
+  /**
+   * Write an auth code to the AUTH characteristic
+   * @param {string} authCode - 8-character hex code
+   */
+  async _writeAuthCode(authCode) {
+    const char = this._characteristics.auth;
+    if (!char) return;
+    const authBuffer = Parser.encodeAuthCode(authCode);
+    await char.write(authBuffer);
+    this.log('Authentication successful');
   }
 
   /**
@@ -790,6 +839,16 @@ class IntelliventSkyDevice extends Homey.Device {
         }
       });
 
+      // Keep the enable toggles in step with what the mode write turned on,
+      // so later shared-payload writes don't rebuild from a stale 'false'
+      if (mode === 'humidity') {
+        await this.setCapabilityValue('intellivent_humidity_enabled', true).catch(this.error);
+      } else if (mode === 'light') {
+        await this.setCapabilityValue('intellivent_light_enabled', true).catch(this.error);
+      } else if (mode === 'voc') {
+        await this.setCapabilityValue('intellivent_voc_enabled', true).catch(this.error);
+      }
+
       // Update capability and fire the mode_changed trigger for
       // Homey-originated changes (the device-report path won't see a change
       // after this optimistic update)
@@ -835,11 +894,13 @@ class IntelliventSkyDevice extends Homey.Device {
   _lightVocParams(overrides = {}) {
     return {
       lightEnabled: overrides.lightEnabled
+        ?? this._deviceConfig.lightEnabled
         ?? (this.getCapabilityValue('intellivent_light_enabled') === true),
       lightDetection: overrides.lightDetection
         ?? this._deviceConfig.lightDetectionRaw
         ?? parseInt(this.getCapabilityValue('intellivent_light_sensitivity') || '2', 10),
       vocEnabled: overrides.vocEnabled
+        ?? this._deviceConfig.vocEnabled
         ?? (this.getCapabilityValue('intellivent_voc_enabled') === true),
       vocDetection: overrides.vocDetection
         ?? this._deviceConfig.vocDetectionRaw
@@ -934,9 +995,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setLightEnabled(enabled) {
     this._checkWriteAccess();
-    const p = this._lightVocParams({ lightEnabled: enabled });
-
     await this._withConnection(async () => {
+      // Assemble the payload inside the connected context so it uses the
+      // values read back from the device, not a pre-connect snapshot
+      const p = this._lightVocParams({ lightEnabled: enabled });
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
@@ -951,9 +1013,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setLightSensitivity(sensitivity) {
     this._checkWriteAccess();
-    const p = this._lightVocParams({ lightDetection: sensitivity });
-
     await this._withConnection(async () => {
+      // Assemble the payload inside the connected context so it uses the
+      // values read back from the device, not a pre-connect snapshot
+      const p = this._lightVocParams({ lightDetection: sensitivity });
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
@@ -968,9 +1031,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setVocEnabled(enabled) {
     this._checkWriteAccess();
-    const p = this._lightVocParams({ vocEnabled: enabled });
-
     await this._withConnection(async () => {
+      // Assemble the payload inside the connected context so it uses the
+      // values read back from the device, not a pre-connect snapshot
+      const p = this._lightVocParams({ vocEnabled: enabled });
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
@@ -985,9 +1049,10 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async setVocSensitivity(sensitivity) {
     this._checkWriteAccess();
-    const p = this._lightVocParams({ vocDetection: sensitivity });
-
     await this._withConnection(async () => {
+      // Assemble the payload inside the connected context so it uses the
+      // values read back from the device, not a pre-connect snapshot
+      const p = this._lightVocParams({ vocDetection: sensitivity });
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
@@ -1020,7 +1085,9 @@ class IntelliventSkyDevice extends Homey.Device {
     const data = Parser.encodeLightVoc(lightEnabled, lightDetection, vocEnabled, vocDetection);
     await char.write(data);
     // The write succeeded - the device now holds these values
+    this._deviceConfig.lightEnabled = Boolean(lightEnabled);
     this._deviceConfig.lightDetectionRaw = Parser.validateDetection(lightDetection);
+    this._deviceConfig.vocEnabled = Boolean(vocEnabled);
     this._deviceConfig.vocDetectionRaw = Parser.validateDetection(vocDetection);
   }
 
