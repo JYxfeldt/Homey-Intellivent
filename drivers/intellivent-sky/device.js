@@ -315,9 +315,13 @@ class IntelliventSkyDevice extends Homey.Device {
 
         if (this._isDeleted) return;
 
-        // Notifications (if any) died with the connection. The poll loop is
-        // always running and will reconnect on its next tick.
-        this.log('Device disconnected unexpectedly, polling will reconnect');
+        // Notifications (if any) died with the connection. Reconnect promptly
+        // instead of leaving up to a full POLL_INTERVAL of blindness.
+        this.log('Device disconnected unexpectedly, scheduling reconnect');
+        this.homey.setTimeout(() => {
+          if (this._isDeleted || this._isConnected) return;
+          this._fetchSensorData().catch(this.error);
+        }, Constants.RECONNECT_DELAY);
       });
 
       // Discover services and characteristics
@@ -796,9 +800,11 @@ class IntelliventSkyDevice extends Homey.Device {
     await this.setAvailable().catch(this.error);
 
     // Surface unauthenticated state: the fan silently ignores writes when not
-    // authenticated, which would otherwise look like working control
-    if (!sensorData.authenticated && !this._isReadOnly()) {
-      await this.setWarning(this.homey.__('errors.not_authenticated')).catch(this.error);
+    // authenticated, which would otherwise look like working control. The
+    // read-only case (auth code 00000000) is the one that most needs a banner.
+    if (!sensorData.authenticated) {
+      const key = this._isReadOnly() ? 'errors.read_only' : 'errors.not_authenticated';
+      await this.setWarning(this.homey.__(key)).catch(this.error);
     } else {
       await this.unsetWarning().catch(this.error);
     }
