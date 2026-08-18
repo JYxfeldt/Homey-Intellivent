@@ -21,6 +21,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._notificationsSubscribed = false;
     this._reconnectAttempts = 0;
     this._operationQueue = Promise.resolve();
+    this._isDeleted = false;
 
     // Rate limiting state
     this._connectionFailures = []; // Timestamps of recent failures
@@ -242,11 +243,18 @@ class IntelliventSkyDevice extends Homey.Device {
 
       // Set up disconnect handler
       this._peripheral.once('disconnect', () => {
-        this.log('Device disconnected unexpectedly');
         this._isConnected = false;
         this._peripheral = null;
         this._characteristics = {};
         this._notificationsSubscribed = false;
+
+        if (this._isDeleted) return;
+
+        // Notifications (if any) died with the connection. Restart the
+        // fallback poll loop so the device recovers on its own instead of
+        // staying silent until a user manually triggers an operation.
+        this.log('Device disconnected unexpectedly, resuming polling for recovery');
+        this._startPolling();
       });
 
       // Discover services and characteristics
@@ -437,8 +445,9 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * Execute a BLE operation with automatic connection handling
-   * Maintains persistent connection with idle timeout
+   * Execute a BLE operation with automatic connection handling.
+   * The connection is persistent (no idle timeout) and stays open until
+   * an unexpected disconnect, device deletion, or explicit disconnect call.
    * @param {Function} operation - The operation to execute
    * @returns {*} - Result of the operation
    */
@@ -851,6 +860,7 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async onDeleted() {
     this.log('Intellivent Sky device has been deleted');
+    this._isDeleted = true;
 
     // Stop polling
     if (this._pollInterval) {
