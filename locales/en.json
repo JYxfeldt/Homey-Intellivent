@@ -7,7 +7,8 @@
     "authentication_failed": "Authentication failed. Please re-pair the device.",
     "write_failed": "Failed to send command to device.",
     "read_failed": "Failed to read data from device.",
-    "read_only": "Device is in read-only mode. Please pair the device properly to enable control."
+    "read_only": "Device is in read-only mode. Please pair the device properly to enable control.",
+    "not_authenticated": "Not authenticated with the fan - commands will be ignored. Put the fan in pairing mode and re-pair."
   },
   "settings": {
     "auth_code": {
@@ -48,9 +49,9 @@
     "intellivent_humidity_sensitivity": {
       "title": "Humidity Sensitivity",
       "values": {
-        "0": "Low",
-        "1": "Medium",
-        "2": "High"
+        "1": "Low",
+        "2": "Medium",
+        "3": "High"
       }
     },
     "intellivent_light_enabled": {
@@ -59,9 +60,9 @@
     "intellivent_light_sensitivity": {
       "title": "Light Sensitivity",
       "values": {
-        "0": "Low",
-        "1": "Medium",
-        "2": "High"
+        "1": "Low",
+        "2": "Medium",
+        "3": "High"
       }
     },
     "intellivent_voc_enabled": {
@@ -70,9 +71,9 @@
     "intellivent_voc_sensitivity": {
       "title": "Smell Sensitivity",
       "values": {
-        "0": "Low",
-        "1": "Medium",
-        "2": "High"
+        "1": "Low",
+        "2": "Medium",
+        "3": "High"
       }
     }
   },

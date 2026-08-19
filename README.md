@@ -26,9 +26,7 @@ Control your Intellivent Fresh ventilation fans via Bluetooth using your Homey P
 
 1. Install the app from the Homey App Store
 2. Go to Devices > Add Device > Intellivent Fresh
-3. Put your Intellivent device in pairing mode:
-   - Press the power button
-   - Hold the WiFi button for 8 seconds
+3. Put your Intellivent device in pairing mode (see Pairing below)
 4. Select your device from the list
 
 ## Flow Cards
@@ -50,9 +48,15 @@ Control your Intellivent Fresh ventilation fans via Bluetooth using your Homey P
 To pair your Intellivent device:
 
 1. Make sure your fan is powered on
-2. Press and hold the WiFi button on the fan for 8 seconds until the LED blinks
+2. Activate Bluetooth pairing mode on the fan's touch panel: press the on/off
+   symbol once, then press and hold the light/air quality symbol for 8 seconds
+   until it starts flashing (see the Intellivent Sky quick guide)
 3. The device should appear in the Homey pairing list
 4. Select the device and follow the pairing instructions
+
+Note: the authentication code is only readable from the fan while it is in
+pairing mode. If pairing completes but the device reports read-only mode,
+put the fan back into pairing mode and re-pair.
 
 ## Troubleshooting
 
@@ -68,7 +72,7 @@ To pair your Intellivent device:
 
 ## Credits
 
-Based on the protocol reverse-engineering from [pyfreshintellivent](https://github.com/JYxfeldt/pyfreshintellivent).
+Based on the protocol reverse-engineering from [pyfreshintellivent](https://github.com/LaStrada/pyfreshintellivent) (upstream by LaStrada, fork at [JYxfeldt/pyfreshintellivent](https://github.com/JYxfeldt/pyfreshintellivent)).
 
 ## License
 
