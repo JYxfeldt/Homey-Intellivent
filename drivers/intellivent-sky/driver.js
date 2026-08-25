@@ -38,17 +38,15 @@ class IntelliventSkyDriver extends Homey.Driver {
         const serviceMatch = (advertisement.serviceUuids || [])
           .some((u) => this._uuidMatches(u, Constants.UUID_SERVICE));
 
-        if (nameMatch || (serviceMatch && !localName)) {
-          this.log(`Found Intellivent device: ${localName} (${advertisement.uuid})`);
+        // Match like the upstream pyfreshintellivent scanner: name OR the
+        // advertised Device Information service.
+        if (nameMatch || serviceMatch) {
+          this.log(`Found Intellivent device: ${localName} (${advertisement.uuid}) rssi=${advertisement.rssi}`);
 
-          // Try to get additional device info
-          let deviceInfo = {};
-          try {
-            deviceInfo = await this._getDeviceInfo(advertisement);
-          } catch (err) {
-            this.log(`Could not get device info: ${err.message}`);
-          }
-
+          // NOTE: deliberately no BLE connect here. Connecting to the fan takes
+          // ~16 s per device (the fan is slow to resolve services) which blows
+          // past Homey's pairing timeout and makes the list come back empty.
+          // Model/firmware info is read later, on the device's own connection.
           devices.push({
             name: localName || 'Intellivent Sky',
             data: {
@@ -58,7 +56,6 @@ class IntelliventSkyDriver extends Homey.Driver {
             },
             store: {
               peripheralUuid: advertisement.uuid,
-              ...deviceInfo,
             },
           });
         }
