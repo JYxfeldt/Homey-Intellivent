@@ -230,7 +230,9 @@ class IntelliventSkyDevice extends Homey.Device {
     // Check extended cooldown
     if (now < this._extendedCooldownUntil) {
       const remainingSeconds = Math.ceil((this._extendedCooldownUntil - now) / 1000);
-      throw new Error(`Connection rate limited. Try again in ${remainingSeconds} seconds.`);
+      const err = new Error(`Connection rate limited. Try again in ${remainingSeconds} seconds.`);
+      err.rateLimited = true;
+      throw err;
     }
 
     // Clean up old failures outside the window
@@ -244,7 +246,9 @@ class IntelliventSkyDevice extends Homey.Device {
       this._connectionFailures = []; // Reset after triggering cooldown
       const cooldownSeconds = Constants.EXTENDED_COOLDOWN / 1000;
       this.log(`Too many connection failures. Entering ${cooldownSeconds}s cooldown.`);
-      throw new Error(`Too many connection failures. Try again in ${cooldownSeconds} seconds.`);
+      const err = new Error(`Too many connection failures. Try again in ${cooldownSeconds} seconds.`);
+      err.rateLimited = true;
+      throw err;
     }
   }
 
@@ -282,50 +286,27 @@ class IntelliventSkyDevice extends Homey.Device {
     this._isConnecting = true;
 
     try {
-      const { uuid } = this.getData();
+      const { uuid, address } = this.getData();
       this.log(`Connecting to device ${uuid}...`);
 
-      // Find the device (ManagerBLE.find takes no timeout parameter in SDK3)
-      const advertisement = await this.homey.ble.find(uuid);
-
-      if (!advertisement) {
-        throw new Error('Device not found');
-      }
-
-      // Connect to the device
-      this._peripheral = await advertisement.connect();
-      this.log('Connected to device');
+      // Scanning, connecting and service discovery all share one radio across
+      // the whole app: hold the app-wide BLE lock for all three. Two devices
+      // doing this concurrently abort each other's scan and fail instantly
+      // with "Peripheral Not Found" even when both fans advertise normally.
+      //
+      // The whole locked section is time-boxed. Homey's BLE connect can hang
+      // indefinitely against a weak peripheral (observed: >3 min on the
+      // rssi -81 fan), and an unbounded hold would starve every other device
+      // of the radio for as long as it lasts.
+      await this.homey.app.withBleLock(() => this._withTimeout(
+        this._connectAndDiscover(uuid, address),
+        Constants.CONNECT_TIMEOUT,
+        'BLE connect/discovery',
+      ));
 
       if (this._isDeleted) {
-        // Deleted while the connect was pending - don't leave a live connection
         throw new Error('Device has been deleted');
       }
-
-      // Set up disconnect handler. Capture the peripheral: a late event from
-      // an already-torn-down peripheral must not null out a newer connection.
-      const peripheral = this._peripheral;
-      peripheral.once('disconnect', () => {
-        if (this._peripheral !== peripheral) return;
-
-        this._isConnected = false;
-        this._peripheral = null;
-        this._characteristics = {};
-        this._notificationsSubscribed = false;
-        this._deviceConfig = {};
-
-        if (this._isDeleted) return;
-
-        // Notifications (if any) died with the connection. Reconnect promptly
-        // instead of leaving up to a full POLL_INTERVAL of blindness.
-        this.log('Device disconnected unexpectedly, scheduling reconnect');
-        this.homey.setTimeout(() => {
-          if (this._isDeleted || this._isConnected) return;
-          this._fetchSensorData().catch(this.error);
-        }, Constants.RECONNECT_DELAY);
-      });
-
-      // Discover services and characteristics
-      await this._peripheral.discoverAllServicesAndCharacteristics();
 
       // Cache characteristics
       await this._cacheCharacteristics();
@@ -508,6 +489,166 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Find, connect and resolve the GATT database. Runs under the app-wide BLE
+   * lock - everything in here needs exclusive use of the radio.
+   * @param {string} uuid - Peripheral uuid stored at pairing time
+   * @param {string} [address] - MAC address stored at pairing time
+   */
+  async _connectAndDiscover(uuid, address) {
+    const advertisement = await this.homey.app.findAdvertisement(uuid, address);
+
+    if (!advertisement) {
+      throw new Error('Device not found');
+    }
+
+    this._peripheral = await advertisement.connect();
+    this.log('Connected to device');
+
+    if (this._isDeleted) {
+      // Deleted while the connect was pending - don't leave a live connection
+      throw new Error('Device has been deleted');
+    }
+
+    // Set up disconnect handler. Capture the peripheral: a late event from
+    // an already-torn-down peripheral must not null out a newer connection.
+    const peripheral = this._peripheral;
+    peripheral.once('disconnect', () => {
+      if (this._peripheral !== peripheral) return;
+
+      this._isConnected = false;
+      this._peripheral = null;
+      this._characteristics = {};
+      this._notificationsSubscribed = false;
+      this._deviceConfig = {};
+
+      if (this._isDeleted) return;
+
+      // Notifications (if any) died with the connection. Reconnect promptly
+      // instead of leaving up to a full POLL_INTERVAL of blindness.
+      this.log('Device disconnected unexpectedly, scheduling reconnect');
+      this.homey.setTimeout(() => {
+        if (this._isDeleted || this._isConnected) return;
+        this._fetchSensorData().catch(this.error);
+      }, Constants.RECONNECT_DELAY);
+    });
+
+    // Discover services and characteristics. The fans are slow here
+    // (~16 s observed); nothing else may touch the radio meanwhile.
+    await this._discoverServices();
+  }
+
+  /**
+   * Reject if a promise has not settled in time.
+   * Used to time-box work that holds the app-wide BLE lock, so one hung
+   * peripheral cannot starve every other device of the radio. The underlying
+   * operation is not cancellable - releasing the lock is the point.
+   * @param {Promise} promise - The promise to time-box
+   * @param {number} ms - Timeout in milliseconds
+   * @param {string} label - Description used in the timeout error
+   * @returns {Promise}
+   */
+  _withTimeout(promise, ms, label) {
+    let timer = null;
+    const timeout = new Promise((resolve, reject) => {
+      timer = this.homey.setTimeout(
+        () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+        ms,
+      );
+    });
+
+    return Promise.race([promise, timeout]).finally(() => {
+      if (timer) this.homey.clearTimeout(timer);
+    });
+  }
+
+  /**
+   * Resolve the peripheral's GATT database.
+   *
+   * Homey's BLE layer allows a fixed ~10 s for ServicesResolved; these fans
+   * regularly need ~16 s, so one call can never succeed and the old code
+   * failed every single connection here. Two things make it work:
+   *
+   *  - Retry on the OPEN connection. BlueZ keeps resolving in the background
+   *    after the SDK gives up, so each retry is a fresh 10 s window against
+   *    progress already made. The previous behaviour (throw -> teardown ->
+   *    reconnect) discarded that progress and restarted the 16 s from zero,
+   *    which is why it looped forever.
+   *  - Stop as soon as the characteristics this driver actually uses are
+   *    present, rather than insisting the full walk completes.
+   */
+  async _discoverServices() {
+    const attempts = Constants.SERVICE_DISCOVERY_ATTEMPTS;
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      if (!this._peripheral || this._peripheral.isConnected === false) {
+        throw lastError || new Error('Device disconnected during service discovery');
+      }
+
+      try {
+        this.log(`Discovering services and characteristics (attempt ${attempt}/${attempts})...`);
+        await this._discoverServicesOnce();
+        await this._cacheCharacteristics();
+        this.log(`Service discovery complete (${(this._peripheral.services || []).length} services)`);
+        return;
+      } catch (err) {
+        lastError = err;
+        this.log(`Service discovery attempt ${attempt} failed: ${err.message}`);
+      }
+
+      // Partial results are still usable: the SDK timing out does not mean
+      // nothing resolved. Check before spending another window.
+      await this._cacheCharacteristics();
+      if (this._hasRequiredCharacteristics()) {
+        this.log('Required characteristics resolved despite the timeout, continuing');
+        return;
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
+   * One discovery pass. Staged where the SDK allows it: fetching the service
+   * handles is cheap, and discovering characteristics per service gives each
+   * service its own timeout window instead of forcing the whole ~16 s walk
+   * into a single 10 s budget.
+   */
+  async _discoverServicesOnce() {
+    if (typeof this._peripheral.discoverServices !== 'function') {
+      await this._peripheral.discoverAllServicesAndCharacteristics();
+      return;
+    }
+
+    const services = await this._peripheral.discoverServices();
+    this.log(`Found ${(services || []).length} services, discovering characteristics...`);
+
+    for (const service of services || []) {
+      if (!this._peripheral || this._peripheral.isConnected === false) {
+        throw new Error('Device disconnected during service discovery');
+      }
+      if (typeof service.discoverCharacteristics !== 'function') continue;
+      try {
+        await service.discoverCharacteristics();
+      } catch (err) {
+        // One slow/unreadable service must not sink the whole connection -
+        // the standard Device Information service in particular is not needed
+        this.log(`Characteristics for service ${service.uuid} failed (continuing): ${err.message}`);
+      }
+    }
+  }
+
+  /**
+   * Whether the characteristics this driver needs to function are cached.
+   * DEVICE_STATUS is the one that matters: without it there are no readings
+   * at all and the device would sit unavailable.
+   * @returns {boolean}
+   */
+  _hasRequiredCharacteristics() {
+    return Boolean(this._characteristics.deviceStatus);
+  }
+
+  /**
    * Cache characteristic references for faster access
    */
   async _cacheCharacteristics() {
@@ -524,8 +665,12 @@ class IntelliventSkyDevice extends Homey.Device {
       { key: 'temporarySpeed', uuid: Constants.TEMPORARY_SPEED },
     ];
 
-    for (const service of this._peripheral.services) {
-      for (const characteristic of service.characteristics) {
+    // Called after partial discovery too, so nothing here may assume the GATT
+    // database is fully populated
+    if (!this._peripheral) return;
+
+    for (const service of this._peripheral.services || []) {
+      for (const characteristic of service.characteristics || []) {
         const uuid = characteristic.uuid.toLowerCase().replace(/-/g, '');
 
         for (const charDef of charUuids) {
@@ -690,13 +835,25 @@ class IntelliventSkyDevice extends Homey.Device {
         lastError = err;
         this.log(`Operation failed (attempt ${attempt + 1}): ${err.message}`);
 
+        // Rate limiting is a deliberate back-off, not a transient fault.
+        // Retrying burns the whole attempt budget inside the cooldown window
+        // and turns one failure into four identical log lines.
+        if (err.rateLimited) {
+          throw err;
+        }
+
         // If connection issue, try to reconnect
         if (!this._isConnected || err.message.includes('not connected') || err.message.includes('disconnected')) {
           await this._teardownConnection();
 
           if (attempt < Constants.MAX_RECONNECT_ATTEMPTS) {
-            this.log(`Reconnecting in ${Constants.RECONNECT_DELAY / 1000} seconds...`);
-            await new Promise((resolve) => this.homey.setTimeout(resolve, Constants.RECONNECT_DELAY));
+            // Exponential backoff. A fixed short delay turns a fan that is
+            // briefly unreachable into a scan storm, and the scan churn from
+            // several devices retrying in lockstep is itself enough to
+            // destabilise Homey's BLE stack.
+            const delay = Constants.RECONNECT_DELAY * (2 ** attempt);
+            this.log(`Reconnecting in ${delay / 1000} seconds...`);
+            await new Promise((resolve) => this.homey.setTimeout(resolve, delay));
           }
         } else {
           // Non-connection error, don't retry
