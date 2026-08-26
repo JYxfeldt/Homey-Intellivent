@@ -8,7 +8,8 @@
     "write_failed": "Kunde inte skicka kommando till enheten.",
     "read_failed": "Kunde inte läsa data från enheten.",
     "read_only": "Enheten är i skrivskyddat läge. Parkoppla enheten korrekt för att aktivera styrning.",
-    "not_authenticated": "Inte autentiserad mot fläkten - kommandon ignoreras. Sätt fläkten i parkopplingsläge och parkoppla igen."
+    "not_authenticated": "Inte autentiserad mot fläkten - kommandon ignoreras. Sätt fläkten i parkopplingsläge och parkoppla igen.",
+    "ble_unavailable": "Homeys Bluetooth-skanning har slutat fungera - inga närliggande enheter syns över huvud taget, så det handlar inte om räckvidd. En omstart av Homey brukar lösa det."
   },
   "settings": {
     "auth_code": {

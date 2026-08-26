@@ -13,6 +13,14 @@ const BLE_SCAN_TIMEOUT = 20000; // ms per discover() sweep - the fans advertise 
 // stack when several devices are retrying.
 const BLE_FIND_ATTEMPTS = 1;
 const BLE_SEEN_LOG_LIMIT = 8; // peripherals listed when a lookup misses
+// Homey's BLE manager occasionally stops scanning for real: a full sweep
+// returns a near-empty list in milliseconds instead of the dozen-odd
+// peripherals a home normally has, and stays that way until Homey is
+// restarted. From inside the app that is indistinguishable from "every fan
+// went out of range at once", so it is worth naming explicitly rather than
+// letting devices sit unavailable with no explanation.
+const BLE_WEDGED_SWEEP_SIZE = 1; // a sweep this small is not a real scan
+const BLE_WEDGED_SWEEPS = 6; // consecutive tiny sweeps before we say so
 
 class IntelliventApp extends Homey.App {
 
@@ -24,6 +32,9 @@ class IntelliventApp extends Homey.App {
 
     // Tail of the app-wide BLE operation queue
     this._bleQueue = Promise.resolve();
+
+    // Consecutive discover() sweeps that came back implausibly empty
+    this._emptySweeps = 0;
 
     // Register flow cards
     this._registerFlowCards();
@@ -58,24 +69,34 @@ class IntelliventApp extends Homey.App {
    * Must be called inside withBleLock().
    * @param {string} uuid - Peripheral uuid stored at pairing time
    * @param {string} [address] - MAC address stored at pairing time
+   * @param {boolean} [forceDiscover] - Skip the cached fast path
    * @returns {BleAdvertisement} - The advertisement
    */
-  async findAdvertisement(uuid, address) {
+  async findAdvertisement(uuid, address, forceDiscover = false) {
     const wanted = new Set(
       [uuid, address].filter(Boolean).map((v) => IntelliventApp.normaliseId(v)),
     );
 
-    // Fast path: the manager may already hold a fresh advertisement
-    try {
-      const advertisement = await this.homey.ble.find(uuid, BLE_SCAN_TIMEOUT);
-      if (advertisement) return advertisement;
-    } catch (err) {
-      this.log(`ble.find(${uuid}) failed, falling back to discover(): ${err.message}`);
+    // Fast path: the manager may already hold a fresh advertisement.
+    //
+    // Skipped after a failed connect. ble.find() answers from Homey's
+    // advertisement cache, and a cached entry can outlive the peripheral it
+    // describes - connecting to it then fails with "Could not connect to
+    // peripheral" after a 20 s stall, forever, even once the fan is back in
+    // range. A real sweep is the only way to get a fresh advertisement object.
+    if (!forceDiscover) {
+      try {
+        const advertisement = await this.homey.ble.find(uuid, BLE_SCAN_TIMEOUT);
+        if (advertisement) return advertisement;
+      } catch (err) {
+        this.log(`ble.find(${uuid}) failed, falling back to discover(): ${err.message}`);
+      }
     }
 
     for (let attempt = 1; attempt <= BLE_FIND_ATTEMPTS; attempt++) {
       const advertisements = await this.homey.ble.discover([], BLE_SCAN_TIMEOUT);
       this.log(`discover() sweep ${attempt}: ${advertisements.length} peripherals`);
+      this._recordSweepSize(advertisements.length);
 
       for (const advertisement of advertisements) {
         const ids = [advertisement.uuid, advertisement.address]
@@ -101,6 +122,40 @@ class IntelliventApp extends Homey.App {
     }
 
     throw new Error(`Peripheral Not Found: ${uuid}`);
+  }
+
+  /**
+   * Track how much a scan actually saw, so a scanner that has stopped working
+   * can be told apart from peripherals that are genuinely out of range.
+   * @param {number} size - Number of peripherals the sweep returned
+   */
+  _recordSweepSize(size) {
+    if (size > BLE_WEDGED_SWEEP_SIZE) {
+      if (this._emptySweeps >= BLE_WEDGED_SWEEPS) {
+        this.log(`BLE scanning recovered (${size} peripherals seen)`);
+      }
+      this._emptySweeps = 0;
+      return;
+    }
+
+    this._emptySweeps += 1;
+    if (this._emptySweeps === BLE_WEDGED_SWEEPS) {
+      this.error(
+        `BLE scanning appears stuck: ${BLE_WEDGED_SWEEPS} consecutive sweeps saw `
+        + `${BLE_WEDGED_SWEEP_SIZE} peripheral or fewer. This is a Homey BLE `
+        + 'issue rather than a fan being out of range, and normally needs a '
+        + 'Homey restart to clear.',
+      );
+    }
+  }
+
+  /**
+   * Whether Homey's BLE scanner looks stuck rather than the fans being away.
+   * Used to give the user an unavailable message they can act on.
+   * @returns {boolean}
+   */
+  bleStackLooksWedged() {
+    return this._emptySweeps >= BLE_WEDGED_SWEEPS;
   }
 
   /**

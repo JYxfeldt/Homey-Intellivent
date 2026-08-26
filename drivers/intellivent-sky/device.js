@@ -20,6 +20,9 @@ class IntelliventSkyDevice extends Homey.Device {
     this._isConnected = false;
     this._notificationsSubscribed = false;
     this._reconnectAttempts = 0;
+    this._reconnectTimer = null;
+    this._consecutiveConnectFailures = 0;
+    this._fetchInFlight = false;
     this._operationQueue = Promise.resolve();
     this._updateChain = Promise.resolve();
     this._isDeleted = false;
@@ -224,10 +227,65 @@ class IntelliventSkyDevice extends Homey.Device {
       this.homey.clearInterval(this._pollInterval);
     }
 
-    // Poll every 5 minutes as heartbeat fallback
     this._pollInterval = this.homey.setInterval(() => {
+      // While disconnected the reconnect scheduler owns the retry cadence.
+      // Letting the poll fire as well used to queue a fresh fetch every
+      // POLL_INTERVAL on top of one that was still backing off, so an
+      // unreachable fan built an unbounded backlog of stale polls - each of
+      // which kept feeding the rate limiter. That backlog then had to drain
+      // before anything current ran, which is why recovery looked random and
+      // took far longer than the signal did to come back.
+      if (this._fetchInFlight || this._reconnectTimer) return;
+
       this._fetchSensorData();
     }, Constants.POLL_INTERVAL);
+  }
+
+  /**
+   * Ask for another connection attempt later, with capped exponential backoff.
+   *
+   * This is the single owner of "try again": one pending timer at a time, and
+   * it never stops rescheduling. A fan that is out of range for hours recovers
+   * on its own once the signal returns, instead of needing an app restart.
+   */
+  _scheduleReconnect() {
+    if (this._isDeleted || this._reconnectTimer || this._isConnected) return;
+
+    const delay = Math.min(
+      Constants.RECONNECT_DELAY * (2 ** this._reconnectAttempts),
+      Constants.MAX_RECONNECT_DELAY,
+    );
+    this._reconnectAttempts += 1;
+
+    this.log(`Reconnecting in ${Math.round(delay / 1000)}s (attempt ${this._reconnectAttempts})`);
+
+    this._reconnectTimer = this.homey.setTimeout(() => {
+      this._reconnectTimer = null;
+      if (this._isDeleted || this._isConnected) return;
+      this._fetchSensorData();
+    }, delay);
+  }
+
+  /**
+   * Cancel a pending reconnect, e.g. because a connection just succeeded
+   */
+  _cancelScheduledReconnect() {
+    if (!this._reconnectTimer) return;
+    this.homey.clearTimeout(this._reconnectTimer);
+    this._reconnectTimer = null;
+  }
+
+  /**
+   * Reset every backoff and rate-limiting counter after a successful connect.
+   * Without this the next single failure would resume the previous (possibly
+   * multi-minute) backoff instead of retrying promptly.
+   */
+  _resetBackoff() {
+    this._reconnectAttempts = 0;
+    this._consecutiveConnectFailures = 0;
+    this._connectionFailures = [];
+    this._extendedCooldownUntil = 0;
+    this._cancelScheduledReconnect();
   }
 
   /**
@@ -338,12 +396,16 @@ class IntelliventSkyDevice extends Homey.Device {
       }
 
       this._isConnected = true;
-      this._reconnectAttempts = 0;
+
+      // Back to a healthy link: forget every accumulated penalty, so the next
+      // isolated blip retries in 5 s rather than resuming a 5 minute backoff
+      this._resetBackoff();
 
       return this._peripheral;
     } catch (err) {
       await this._teardownConnection();
       this._recordConnectionFailure();
+      this._consecutiveConnectFailures += 1;
       throw err;
     } finally {
       this._isConnecting = false;
@@ -533,7 +595,15 @@ class IntelliventSkyDevice extends Homey.Device {
    * @param {string} [address] - MAC address stored at pairing time
    */
   async _connectAndDiscover(uuid, address) {
-    const advertisement = await this.homey.app.findAdvertisement(uuid, address);
+    // After repeated failures, stop trusting Homey's advertisement cache: a
+    // cached entry can outlive the peripheral and every connect against it
+    // fails the same way, indefinitely, even once the fan is back in range
+    const forceDiscover = this._consecutiveConnectFailures >= Constants.FORCE_DISCOVER_AFTER_FAILURES;
+    if (forceDiscover) {
+      this.log(`${this._consecutiveConnectFailures} consecutive failures - forcing a fresh scan`);
+    }
+
+    const advertisement = await this.homey.app.findAdvertisement(uuid, address, forceDiscover);
 
     if (!advertisement) {
       throw new Error('Device not found');
@@ -562,12 +632,12 @@ class IntelliventSkyDevice extends Homey.Device {
       if (this._isDeleted) return;
 
       // Notifications (if any) died with the connection. Reconnect promptly
-      // instead of leaving up to a full POLL_INTERVAL of blindness.
+      // instead of leaving up to a full POLL_INTERVAL of blindness. This was
+      // a clean drop rather than a failed attempt, so retry from the shortest
+      // delay instead of inheriting an old backoff.
       this.log('Device disconnected unexpectedly, scheduling reconnect');
-      this.homey.setTimeout(() => {
-        if (this._isDeleted || this._isConnected) return;
-        this._fetchSensorData().catch(this.error);
-      }, Constants.RECONNECT_DELAY);
+      this._reconnectAttempts = 0;
+      this._scheduleReconnect();
     });
 
     // Discover services and characteristics. The fans are slow here
@@ -878,16 +948,19 @@ class IntelliventSkyDevice extends Homey.Device {
    * The connection is persistent (no idle timeout) and stays open until
    * an unexpected disconnect, device deletion, or explicit disconnect call.
    * @param {Function} operation - The operation to execute
+   * @param {number} [retries] - Extra attempts after the first. Defaults to
+   *   MAX_RECONNECT_ATTEMPTS for user-initiated commands; the background poll
+   *   passes 0 and leaves retrying to the reconnect scheduler.
    * @returns {*} - Result of the operation
    */
-  async _withConnection(operation) {
+  async _withConnection(operation, retries = Constants.MAX_RECONNECT_ATTEMPTS) {
     // Queue operations to prevent concurrent BLE access. The stored queue tail
     // must never be a rejected promise: chaining .then() on a rejection would
     // skip every subsequent operation and replay the stale error forever.
     // Errors are delivered to the caller via `run`; the tail swallows them.
     const run = this._operationQueue
       .catch(() => {}) // previous operation's error was already delivered to its caller
-      .then(() => this._executeWithRetry(operation));
+      .then(() => this._executeWithRetry(operation, retries));
     this._operationQueue = run.catch(() => {});
     return run;
   }
@@ -895,12 +968,13 @@ class IntelliventSkyDevice extends Homey.Device {
   /**
    * Run one BLE operation, reconnecting on connection errors.
    * @param {Function} operation - The operation to execute
+   * @param {number} retries - Extra attempts after the first
    * @returns {*} - Result of the operation
    */
-  async _executeWithRetry(operation) {
+  async _executeWithRetry(operation, retries = Constants.MAX_RECONNECT_ATTEMPTS) {
     let lastError = null;
 
-    for (let attempt = 0; attempt <= Constants.MAX_RECONNECT_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
       if (this._isDeleted) {
         throw new Error('Device has been deleted');
       }
@@ -923,13 +997,16 @@ class IntelliventSkyDevice extends Homey.Device {
         if (!this._isConnected || err.message.includes('not connected') || err.message.includes('disconnected')) {
           await this._teardownConnection();
 
-          if (attempt < Constants.MAX_RECONNECT_ATTEMPTS) {
+          if (attempt < retries) {
             // Exponential backoff. A fixed short delay turns a fan that is
             // briefly unreachable into a scan storm, and the scan churn from
             // several devices retrying in lockstep is itself enough to
             // destabilise Homey's BLE stack.
-            const delay = Constants.RECONNECT_DELAY * (2 ** attempt);
-            this.log(`Reconnecting in ${delay / 1000} seconds...`);
+            const delay = Math.min(
+              Constants.RECONNECT_DELAY * (2 ** attempt),
+              Constants.MAX_RECONNECT_DELAY,
+            );
+            this.log(`Retrying in ${Math.round(delay / 1000)} seconds...`);
             await new Promise((resolve) => this.homey.setTimeout(resolve, delay));
           }
         } else {
@@ -946,7 +1023,16 @@ class IntelliventSkyDevice extends Homey.Device {
    * Fetch sensor data from device
    */
   async _fetchSensorData() {
+    // One fetch at a time. Overlapping fetches only ever queue up behind each
+    // other anyway, and while disconnected they used to accumulate faster than
+    // they drained.
+    if (this._fetchInFlight || this._isDeleted) return;
+    this._fetchInFlight = true;
+
     try {
+      // Single attempt: the reconnect scheduler owns retrying, with a backoff
+      // that survives across calls. Retrying here as well would multiply the
+      // scan churn and keep the rate limiter permanently armed.
       await this._withConnection(async () => {
         const char = this._characteristics.deviceStatus;
         if (!char) {
@@ -965,10 +1051,23 @@ class IntelliventSkyDevice extends Homey.Device {
         // Cheap piggyback on the poll: pick up an auth code if the fan has
         // since been put into pairing mode
         await this._retryAuthIfReadOnly();
-      });
+      }, 0);
     } catch (err) {
       this.error(`Failed to fetch sensor data: ${err.message}`);
-      this.setUnavailable(this.homey.__('errors.connection_failed')).catch(this.error);
+
+      // Distinguish "this fan is unreachable" from "Homey's BLE scanner has
+      // stopped working", which look identical from here but need completely
+      // different things from the user
+      const wedged = typeof this.homey.app.bleStackLooksWedged === 'function'
+        && this.homey.app.bleStackLooksWedged();
+      const reason = wedged ? 'errors.ble_unavailable' : 'errors.connection_failed';
+      this.setUnavailable(this.homey.__(reason)).catch(this.error);
+
+      // Keep trying, forever, at a decreasing rate. setAvailable() happens
+      // again automatically on the first successful read.
+      this._scheduleReconnect();
+    } finally {
+      this._fetchInFlight = false;
     }
   }
 
@@ -1420,6 +1519,9 @@ class IntelliventSkyDevice extends Homey.Device {
       this.homey.clearInterval(this._pollInterval);
       this._pollInterval = null;
     }
+
+    // A pending reconnect would otherwise fire against a deleted device
+    this._cancelScheduledReconnect();
 
     // Disconnect (also unsubscribes from notifications)
     await this._disconnect(true);

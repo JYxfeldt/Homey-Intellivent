@@ -8,7 +8,8 @@
     "write_failed": "Failed to send command to device.",
     "read_failed": "Failed to read data from device.",
     "read_only": "Device is in read-only mode. Please pair the device properly to enable control.",
-    "not_authenticated": "Not authenticated with the fan - commands will be ignored. Put the fan in pairing mode and re-pair."
+    "not_authenticated": "Not authenticated with the fan - commands will be ignored. Put the fan in pairing mode and re-pair.",
+    "ble_unavailable": "Homey's Bluetooth scanning has stopped working - no nearby devices are visible at all, so this is not a range problem. Restarting Homey normally fixes it."
   },
   "settings": {
     "auth_code": {
