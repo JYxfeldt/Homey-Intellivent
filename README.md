@@ -19,6 +19,9 @@ Control your Intellivent Fresh ventilation fans via Bluetooth using your Homey P
   - Boost: High-speed mode for quick ventilation
   - Airing: Cycle between on/off periods
   - Pause: Temporarily stop the fan
+- **Boost Button**: One tap on the device tile runs the fan at full speed for a
+  set time. Speed and duration are configured per device under Settings > Boost
+  (defaults: 2400 RPM for 15 minutes)
 - **Sensor Readings**: Monitor temperature and humidity
 - **Flow Support**: Integrate with Homey flows for automation
 

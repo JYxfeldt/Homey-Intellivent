@@ -34,6 +34,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._connectionFailures = []; // Timestamps of recent failures
     this._extendedCooldownUntil = 0; // Timestamp when extended cooldown ends
     this._lastAuthRegenTime = 0; // Timestamp of last auth code regeneration
+    this._lastAuthRetry = 0; // Timestamp of last read-only re-auth attempt
 
     // Ensure new capabilities exist on already-paired devices
     await this._migrateCapabilities();
@@ -81,7 +82,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * Add capabilities that were introduced after initial pairing
    */
   async _migrateCapabilities() {
-    const newCapabilities = ['measure_rpm'];
+    const newCapabilities = ['measure_rpm', 'intellivent_boost'];
     for (const cap of newCapabilities) {
       if (!this.hasCapability(cap)) {
         this.log(`Adding missing capability: ${cap}`);
@@ -196,6 +197,15 @@ class IntelliventSkyDevice extends Homey.Device {
       this._checkWriteAccess();
       this.log(`Setting VOC sensitivity to ${value}`);
       await this.setVocSensitivity(parseInt(value, 10));
+    });
+
+    // Boost button - one tap, using the speed/duration from device settings
+    this.registerCapabilityListener('intellivent_boost', async () => {
+      this._checkWriteAccess();
+      const rpm = this.getSetting('boost_rpm') || Constants.MAX_RPM;
+      const minutes = this.getSetting('boost_minutes') || Constants.DEFAULT_BOOST_MINUTES;
+      this.log(`Boost button pressed: ${minutes} min at ${rpm} RPM`);
+      await this.startBoost(minutes, rpm);
     });
   }
 
@@ -346,31 +356,32 @@ class IntelliventSkyDevice extends Homey.Device {
    * config writes rebuild their payloads from those stale values, silently
    * overwriting settings made from e.g. the Fresh phone app.
    *
-   * Only unambiguous fields are synced to capabilities: enabled flags,
-   * humidity sensitivity (regular scale both ways) and the constant-speed
-   * RPM. Light/VOC sensitivities are NOT synced to capabilities: per
-   * pyfreshintellivent, their read scales differ from the write scale (light
-   * has no 'low', VOC reads reversed), so a read-back would visibly flip the
-   * user's selection. Their raw wire values ARE cached, so writes to the
-   * shared light/VOC payload preserve the device's actual settings.
+   * Every sensitivity is mirrored as the raw wire value, because this app's
+   * enum ids ARE the wire values ('1'..'3') on both the read and the write
+   * path. That round-trips losslessly: pick High -> write 3 -> read 3 ->
+   * still shows High.
+   *
+   * This deliberately does not apply pyfreshintellivent's per-channel display
+   * scales (light disable_low, VOC regular_order=False). Those exist to label
+   * a value for a human, and upstream applies them asymmetrically - its
+   * light_and_voc_write encodes VOC with the REGULAR order while its
+   * light_and_voc_read decodes VOC reversed, so round-tripping through them
+   * turns High into Low. The one display rule that is safe is light's missing
+   * 'Low': the device has no low light setting, so wire 1 is shown as Medium
+   * (and upstream encodes Medium back to the same value).
    *
    * Each read is isolated: one failing characteristic never blocks the rest,
    * and a failed readback never fails the connection.
    */
   async _syncConfigFromDevice() {
-    // Sensitivity capability ids are the wire write values ('1'..'3')
-    const levelToCapability = { low: '1', medium: '2', high: '3' };
-
     try {
       const humidityChar = this._characteristics.humidity;
       if (humidityChar) {
         const humidity = Parser.parseHumidity(await humidityChar.read());
         this._deviceConfig.humidityRpm = humidity.rpm;
+        this.log(`Humidity readback: enabled=${humidity.enabled} raw=${humidity.detectionRaw} rpm=${humidity.rpm}`);
         await this.setCapabilityValue('intellivent_humidity_enabled', humidity.enabled).catch(this.error);
-        const level = levelToCapability[humidity.detection];
-        if (level) {
-          await this.setCapabilityValue('intellivent_humidity_sensitivity', level).catch(this.error);
-        }
+        await this._setSensitivityCapability('intellivent_humidity_sensitivity', humidity.detectionRaw);
       }
     } catch (err) {
       this.log(`Humidity config readback failed (non-fatal): ${err.message}`);
@@ -384,8 +395,16 @@ class IntelliventSkyDevice extends Homey.Device {
         this._deviceConfig.lightDetectionRaw = lightVoc.light.detectionRaw;
         this._deviceConfig.vocEnabled = lightVoc.voc.enabled;
         this._deviceConfig.vocDetectionRaw = lightVoc.voc.detectionRaw;
+        this.log(`Light/VOC readback: light enabled=${lightVoc.light.enabled} raw=${lightVoc.light.detectionRaw}, voc enabled=${lightVoc.voc.enabled} raw=${lightVoc.voc.detectionRaw}`);
+
         await this.setCapabilityValue('intellivent_light_enabled', lightVoc.light.enabled).catch(this.error);
         await this.setCapabilityValue('intellivent_voc_enabled', lightVoc.voc.enabled).catch(this.error);
+
+        // The fan has no low light setting - wire 1 and 2 are the same
+        // physical level, so show the one the picker can round-trip
+        const lightLevel = lightVoc.light.detectionRaw === 1 ? 2 : lightVoc.light.detectionRaw;
+        await this._setSensitivityCapability('intellivent_light_sensitivity', lightLevel);
+        await this._setSensitivityCapability('intellivent_voc_sensitivity', lightVoc.voc.detectionRaw);
       }
     } catch (err) {
       this.log(`Light/VOC config readback failed (non-fatal): ${err.message}`);
@@ -405,6 +424,25 @@ class IntelliventSkyDevice extends Homey.Device {
     } catch (err) {
       this.log(`Constant speed config readback failed (non-fatal): ${err.message}`);
     }
+  }
+
+  /**
+   * Write a sensitivity read back from the fan into its enum capability.
+   * The enum ids are the wire values, so the raw byte maps straight across -
+   * but a fan holding something outside 1..3 must not blank the picker with
+   * an invalid value, so anything unexpected is logged and skipped.
+   * @param {string} capability - Capability id
+   * @param {number} raw - Raw wire value from the device
+   */
+  async _setSensitivityCapability(capability, raw) {
+    if (!this.hasCapability(capability)) return;
+
+    if (!Number.isInteger(raw) || raw < 1 || raw > 3) {
+      this.log(`Ignoring out-of-range ${capability} value from device: ${raw}`);
+      return;
+    }
+
+    await this.setCapabilityValue(capability, String(raw)).catch(this.error);
   }
 
   /**
@@ -725,6 +763,40 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * While the device is read-only, keep watching for a real auth code.
+   *
+   * The code is only readable while the fan is in pairing mode, and this
+   * app holds a persistent connection - so a fan put into pairing mode after
+   * the app connected would otherwise stay read-only until someone restarted
+   * the app, with every write silently rejected in the meantime. Retrying on
+   * the live connection closes that gap.
+   *
+   * Must be called inside _withConnection().
+   */
+  async _retryAuthIfReadOnly() {
+    if (this._isDeleted || !this._isReadOnly()) return;
+
+    const now = Date.now();
+    if (now - this._lastAuthRetry < Constants.AUTH_RETRY_INTERVAL) return;
+    this._lastAuthRetry = now;
+
+    await this._fetchAndStoreAuthCode();
+
+    const authCode = this.getSetting('auth_code');
+    if (!authCode || authCode === '00000000') return;
+
+    // A stored code is not enough: this session must also be authenticated
+    // with it, otherwise the fan keeps ignoring every command
+    try {
+      await this._writeAuthCode(authCode);
+      this.log('Fan was in pairing mode - auth code picked up, control enabled');
+      await this.unsetWarning().catch(this.error);
+    } catch (err) {
+      this.error(`Picked up an auth code but could not authenticate: ${err.message}`);
+    }
+  }
+
+  /**
    * Write an auth code to the AUTH characteristic
    * @param {string} authCode - 8-character hex code
    */
@@ -780,6 +852,11 @@ class IntelliventSkyDevice extends Homey.Device {
           this.log('Fan not in pairing mode; keeping stored auth code');
           return;
         }
+
+        // Nothing changed - skip the settings write. The read-only retry path
+        // lands here every minute, and re-writing the same 00000000 marker
+        // would churn settings (and the timeline) for no reason.
+        if (authCode === existingCode) return;
 
         await this.setSettings({ auth_code: authCode });
         // Only a REAL code arms the regeneration cooldown. Storing the
@@ -884,6 +961,10 @@ class IntelliventSkyDevice extends Homey.Device {
 
         // Update capabilities
         await this._queueCapabilityUpdate(sensorData);
+
+        // Cheap piggyback on the poll: pick up an auth code if the fan has
+        // since been put into pairing mode
+        await this._retryAuthIfReadOnly();
       });
     } catch (err) {
       this.error(`Failed to fetch sensor data: ${err.message}`);

@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -53,7 +53,8 @@
         "intellivent_light_enabled",
         "intellivent_light_sensitivity",
         "intellivent_voc_enabled",
-        "intellivent_voc_sensitivity"
+        "intellivent_voc_sensitivity",
+        "intellivent_boost"
       ],
       "capabilitiesOptions": {
         "intellivent_rpm": {
@@ -131,6 +132,44 @@
                 "en": "Hardware Version"
               },
               "value": "Unknown"
+            }
+          ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Boost"
+          },
+          "children": [
+            {
+              "id": "boost_rpm",
+              "type": "number",
+              "label": {
+                "en": "Boost Speed"
+              },
+              "hint": {
+                "en": "Fan speed used by the Boost button on the device tile"
+              },
+              "value": 2400,
+              "min": 800,
+              "max": 2400,
+              "step": 100,
+              "units": "RPM"
+            },
+            {
+              "id": "boost_minutes",
+              "type": "number",
+              "label": {
+                "en": "Boost Duration"
+              },
+              "hint": {
+                "en": "How long the Boost button runs, in minutes"
+              },
+              "value": 15,
+              "min": 1,
+              "max": 60,
+              "step": 1,
+              "units": "min"
             }
           ]
         }
@@ -302,6 +341,18 @@
       "getable": true,
       "setable": true,
       "uiComponent": "picker"
+    },
+    "intellivent_boost": {
+      "type": "boolean",
+      "title": {
+        "en": "Boost"
+      },
+      "desc": {
+        "en": "Run the fan at the configured boost speed for the configured duration"
+      },
+      "getable": false,
+      "setable": true,
+      "uiComponent": "button"
     }
   },
   "flow": {
