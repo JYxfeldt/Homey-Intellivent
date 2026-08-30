@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -89,6 +89,11 @@
         {
           "id": "add_devices",
           "template": "add_devices"
+        }
+      ],
+      "repair": [
+        {
+          "id": "repair"
         }
       ],
       "settings": [

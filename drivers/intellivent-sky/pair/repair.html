@@ -1,0 +1,151 @@
+<style>
+  .iv-section {
+    margin-bottom: 20px;
+  }
+
+  .iv-steps {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    line-height: 1.55;
+  }
+
+  .iv-steps li {
+    margin-bottom: 6px;
+  }
+
+  .iv-note {
+    opacity: 0.7;
+    font-size: 0.9em;
+    line-height: 1.45;
+  }
+
+  .iv-log {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 8px;
+    background: rgba(127, 127, 127, 0.1);
+    font-size: 0.92em;
+    line-height: 1.6;
+    display: none;
+  }
+
+  .iv-log.is-visible {
+    display: block;
+  }
+
+  .iv-log-line {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .iv-log-line .iv-mark {
+    flex: 0 0 auto;
+    width: 1em;
+  }
+
+  .iv-ok {
+    color: #2e9e5b;
+  }
+
+  .iv-fail {
+    color: #d0454c;
+  }
+
+  .iv-warn {
+    color: #c98a00;
+  }
+</style>
+
+<div class="iv-section">
+  <p data-i18n="repair.intro"></p>
+</div>
+
+<div class="iv-section">
+  <b data-i18n="repair.pairing_mode_title"></b>
+  <ol class="iv-steps">
+    <li data-i18n="repair.pairing_mode_step1"></li>
+    <li data-i18n="repair.pairing_mode_step2"></li>
+    <li data-i18n="repair.pairing_mode_step3"></li>
+  </ol>
+  <p class="iv-note" data-i18n="repair.pairing_mode_note"></p>
+</div>
+
+<div class="iv-log" id="log"></div>
+
+<script type="application/javascript">
+  /* global Homey */
+  let running = false;
+
+  function addLine(mark, text, cls) {
+    const log = document.getElementById('log');
+    log.classList.add('is-visible');
+
+    const line = document.createElement('div');
+    line.className = 'iv-log-line';
+
+    const markEl = document.createElement('span');
+    markEl.className = `iv-mark ${cls || ''}`;
+    markEl.textContent = mark;
+
+    const textEl = document.createElement('span');
+    // textContent, not innerHTML: these strings carry device-reported values
+    textEl.textContent = text;
+
+    line.appendChild(markEl);
+    line.appendChild(textEl);
+    log.appendChild(line);
+  }
+
+  function onHomeyReady(Homey) {
+    Homey.setTitle(Homey.__('repair.title'));
+
+    // Progress messages streamed from the driver while repair runs
+    Homey.on('repair_progress', (message) => {
+      addLine('·', message);
+      return null;
+    });
+
+    async function runRepair() {
+      if (running) return;
+      running = true;
+
+      document.getElementById('log').innerHTML = '';
+      Homey.showLoadingOverlay();
+
+      try {
+        const result = await Homey.emit('repair_start');
+
+        addLine('✓', Homey.__('repair.result_connected'), 'iv-ok');
+
+        if (result && result.readings) {
+          addLine('✓', result.readings, 'iv-ok');
+        }
+
+        if (result && result.authenticated) {
+          addLine('✓', Homey.__('repair.result_auth_ok'), 'iv-ok');
+        } else {
+          addLine('!', Homey.__('repair.result_auth_missing'), 'iv-warn');
+        }
+
+        Homey.setNavigationClose();
+      } catch (err) {
+        addLine('✗', String((err && err.message) || err), 'iv-fail');
+        addLine('·', Homey.__('repair.result_failed_hint'));
+      } finally {
+        Homey.hideLoadingOverlay();
+        running = false;
+      }
+    }
+
+    // The repair button lives in the view's own body so it works on every
+    // Homey client, rather than depending on navigation chrome
+    const button = document.createElement('button');
+    button.className = 'homey-button-primary-full';
+    button.textContent = Homey.__('repair.button');
+    button.addEventListener('click', runRepair);
+    document.body.appendChild(button);
+
+    Homey.ready();
+  }
+</script>

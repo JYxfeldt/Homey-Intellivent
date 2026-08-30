@@ -106,5 +106,24 @@
         "title": "Configure humidity detection"
       }
     }
+  },
+  "repair": {
+    "title": "Repair fan",
+    "intro": "This reconnects the fan from scratch: it forces a fresh Bluetooth scan instead of trusting Homey's cached one, rebuilds the connection, and reads the authentication code again. Use it when the fan is stuck unavailable, or after you have put it into pairing mode.",
+    "button": "Repair",
+    "pairing_mode_title": "To also enable control (Boost, modes, fan speed)",
+    "pairing_mode_step1": "Make sure the fan has power.",
+    "pairing_mode_step2": "On the fan's touch panel, press the on/off symbol once.",
+    "pairing_mode_step3": "Then press and hold the light / air quality symbol for 8 seconds, until it starts flashing.",
+    "pairing_mode_note": "The flashing symbol means Bluetooth pairing mode is active. The fan only hands out its authentication code while in this mode, and without that code it accepts readings but ignores every command. Start the repair while the symbol is flashing.",
+    "progress_disconnect": "Releasing the current connection…",
+    "progress_scan": "Scanning for the fan (this can take up to a minute)…",
+    "progress_connected": "Connected, reading the fan…",
+    "result_connected": "Fan found and reconnected",
+    "result_readings": "Reading: __rpm__ RPM, __temperature__ °C, __humidity__ % humidity",
+    "result_auth_ok": "Authentication code stored — control is enabled",
+    "result_auth_missing": "No authentication code: the fan was not in pairing mode, so it stays read-only. Follow the steps above and repair again to enable control.",
+    "result_failed_hint": "The fan could not be reached. Check that it has power and is in range, then try again. If repeated attempts fail while other Bluetooth devices also stop working, Homey's Bluetooth may need a restart.",
+    "error_no_status_characteristic": "Connected, but the fan did not expose its status characteristic. Try the repair again."
   }
 }

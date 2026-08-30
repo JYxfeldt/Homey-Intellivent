@@ -13,6 +13,37 @@ class IntelliventSkyDriver extends Homey.Driver {
   }
 
   /**
+   * onRepair runs the repair view for an existing device.
+   *
+   * Repair exists because the two things that go wrong with these fans both
+   * used to require deleting and re-adding the device:
+   *   - the BLE link is lost and the cached advertisement is stale, so
+   *     reconnects keep failing against a dead reference
+   *   - the fan was put into pairing mode, but the app is holding a live
+   *     connection and so never re-reads the auth code, leaving it read-only
+   *
+   * @param {PairSession} session - The repair session
+   * @param {Device} device - The device being repaired
+   */
+  async onRepair(session, device) {
+    this.log(`Repair started for ${device.getName()}`);
+
+    session.setHandler('repair_start', async () => {
+      // Stream progress so the user sees a slow BLE scan working rather than
+      // an unexplained wait - a full rescan plus discovery can take ~40 s
+      const onProgress = (message) => {
+        session.emit('repair_progress', message).catch(() => {});
+      };
+
+      return device.runRepair(onProgress);
+    });
+
+    session.setHandler('disconnect', async () => {
+      this.log(`Repair finished for ${device.getName()}`);
+    });
+  }
+
+  /**
    * onPairListDevices is called when a user is adding a device
    * and the 'list_devices' view is called.
    * This should return an array with the data of devices that are available for pairing.

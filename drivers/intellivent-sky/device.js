@@ -40,6 +40,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._lastAuthRegenTime = 0; // Timestamp of last auth code regeneration
     this._lastAuthRetry = 0; // Timestamp of last read-only re-auth attempt
     this._intentionalDisconnect = false; // True while we are tearing down on purpose
+    this._forceRescan = false; // True while a repair wants a cache-bypassing scan
 
     // Ensure new capabilities exist on already-paired devices
     await this._migrateCapabilities();
@@ -639,6 +640,84 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * User-initiated repair: rebuild the connection from scratch and pick up a
+   * new auth code if the fan has been put into pairing mode.
+   *
+   * Queued on the device's own operation queue so it never runs concurrently
+   * with a poll, and it goes through the normal connect path so it inherits
+   * the app-wide BLE lock. The scan is forced past Homey's advertisement
+   * cache, because a stale cached advertisement is exactly what leaves normal
+   * reconnects failing forever.
+   *
+   * @param {Function} onProgress - Called with human-readable progress lines
+   * @returns {object} - { authenticated, readOnly, readings }
+   */
+  async runRepair(onProgress = () => {}) {
+    const run = this._operationQueue
+      .catch(() => {})
+      .then(() => this._repairSequence(onProgress));
+    this._operationQueue = run.catch(() => {});
+    return run;
+  }
+
+  /**
+   * The repair steps themselves. Runs inside the operation queue.
+   * @param {Function} onProgress - Progress callback
+   * @returns {object} - Repair result
+   */
+  async _repairSequence(onProgress) {
+    const t = (key, tokens) => this.homey.__(`repair.${key}`, tokens);
+
+    // A repair is an explicit user request: it must not be refused because
+    // background reconnects tripped the rate limiter earlier
+    this._connectionFailures = [];
+    this._extendedCooldownUntil = 0;
+    this._reconnectAttempts = 0;
+    this._cancelScheduledReconnect();
+
+    // Let the auth read run even if a background attempt happened recently
+    this._lastAuthRegenTime = 0;
+    this._lastAuthRetry = 0;
+
+    onProgress(t('progress_disconnect'));
+    await this._disconnect(true).catch(() => {});
+
+    onProgress(t('progress_scan'));
+    this._forceRescan = true;
+
+    try {
+      await this._connect();
+    } finally {
+      this._forceRescan = false;
+    }
+
+    onProgress(t('progress_connected'));
+
+    // Read status directly so the result reflects this moment, not a cached
+    // capability value from before the fan went away
+    const char = this._characteristics.deviceStatus;
+    if (!char) {
+      throw new Error(t('error_no_status_characteristic'));
+    }
+
+    const sensorData = Parser.parseSensorData(await char.read());
+    await this._queueCapabilityUpdate(sensorData);
+
+    const readOnly = this._isReadOnly();
+    this.log(`Repair complete: authenticated=${sensorData.authenticated} readOnly=${readOnly}`);
+
+    return {
+      authenticated: !readOnly,
+      readOnly,
+      readings: t('result_readings', {
+        rpm: String(sensorData.rpm),
+        temperature: sensorData.temperature.toFixed(1),
+        humidity: sensorData.humidity.toFixed(1),
+      }),
+    };
+  }
+
+  /**
    * Find, connect and resolve the GATT database. Runs under the app-wide BLE
    * lock - everything in here needs exclusive use of the radio.
    * @param {string} uuid - Peripheral uuid stored at pairing time
@@ -648,7 +727,8 @@ class IntelliventSkyDevice extends Homey.Device {
     // After repeated failures, stop trusting Homey's advertisement cache: a
     // cached entry can outlive the peripheral and every connect against it
     // fails the same way, indefinitely, even once the fan is back in range
-    const forceDiscover = this._consecutiveConnectFailures >= Constants.FORCE_DISCOVER_AFTER_FAILURES;
+    const forceDiscover = this._forceRescan
+      || this._consecutiveConnectFailures >= Constants.FORCE_DISCOVER_AFTER_FAILURES;
     if (forceDiscover) {
       this.log(`${this._consecutiveConnectFailures} consecutive failures - forcing a fresh scan`);
     }

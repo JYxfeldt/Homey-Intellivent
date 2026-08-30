@@ -106,5 +106,24 @@
         "title": "Konfigurera fuktighetsdetektering"
       }
     }
+  },
+  "repair": {
+    "title": "Reparera fläkt",
+    "intro": "Det här återupprättar anslutningen från grunden: en ny Bluetooth-skanning tvingas fram i stället för Homeys cachade, anslutningen byggs upp på nytt och autentiseringskoden läses om. Använd det när fläkten fastnat som otillgänglig, eller när du satt den i parkopplingsläge.",
+    "button": "Reparera",
+    "pairing_mode_title": "För att även aktivera styrning (boost, lägen, fläkthastighet)",
+    "pairing_mode_step1": "Kontrollera att fläkten har ström.",
+    "pairing_mode_step2": "Tryck en gång på på/av-symbolen på fläktens touchpanel.",
+    "pairing_mode_step3": "Håll sedan ljus-/luftkvalitetssymbolen intryckt i 8 sekunder, tills den börjar blinka.",
+    "pairing_mode_note": "Att symbolen blinkar betyder att Bluetooth-parkopplingsläget är aktivt. Fläkten lämnar bara ut sin autentiseringskod i det läget, och utan koden accepterar den avläsningar men ignorerar alla kommandon. Starta reparationen medan symbolen blinkar.",
+    "progress_disconnect": "Kopplar ner den befintliga anslutningen…",
+    "progress_scan": "Söker efter fläkten (kan ta upp till en minut)…",
+    "progress_connected": "Ansluten, läser av fläkten…",
+    "result_connected": "Fläkten hittad och återansluten",
+    "result_readings": "Avläsning: __rpm__ varv/min, __temperature__ °C, __humidity__ % luftfuktighet",
+    "result_auth_ok": "Autentiseringskod sparad — styrning är aktiverad",
+    "result_auth_missing": "Ingen autentiseringskod: fläkten var inte i parkopplingsläge, så den förblir skrivskyddad. Följ stegen ovan och reparera igen för att aktivera styrning.",
+    "result_failed_hint": "Fläkten kunde inte nås. Kontrollera att den har ström och är inom räckvidd, och försök igen. Om upprepade försök misslyckas samtidigt som andra Bluetooth-enheter också slutar fungera kan Homeys Bluetooth behöva startas om.",
+    "error_no_status_characteristic": "Ansluten, men fläkten exponerade inte sin statuskaraktäristik. Försök reparera igen."
   }
 }
