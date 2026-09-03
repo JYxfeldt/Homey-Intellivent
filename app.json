@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],

@@ -19,18 +19,42 @@
     line-height: 1.45;
   }
 
-  .iv-log {
-    margin-top: 16px;
-    padding: 12px;
-    border-radius: 8px;
-    background: rgba(127, 127, 127, 0.1);
-    font-size: 0.92em;
-    line-height: 1.6;
-    display: none;
+  /* Styled without relying on Homey's own button classes: if that stylesheet
+     is not present in a repair view the button must still be visible. */
+  .iv-button {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 24px 0 8px;
+    padding: 14px 16px;
+    border: 0;
+    border-radius: 10px;
+    background: #0091ff;
+    color: #fff;
+    font-size: 1em;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
   }
 
-  .iv-log.is-visible {
-    display: block;
+  .iv-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .iv-log {
+    margin-top: 8px;
+    padding: 12px;
+    border-radius: 8px;
+    background: rgba(127, 127, 127, 0.12);
+    font-size: 0.92em;
+    line-height: 1.6;
+  }
+
+  .iv-log:empty {
+    display: none;
   }
 
   .iv-log-line {
@@ -71,81 +95,131 @@
   <p class="iv-note" data-i18n="repair.pairing_mode_note"></p>
 </div>
 
+<!--
+  The button and the log live in the markup, not in script.
+
+  The first version created the button inside onHomeyReady(). The static text
+  above rendered from data-i18n regardless, so when anything in that callback
+  threw before reaching the button - or the callback never ran at all - the
+  view looked complete but had nothing to press. Declaring both here means the
+  control is present even if the script fails, and any such failure is now
+  reported into the log instead of vanishing.
+-->
+<button type="button" class="iv-button" id="repair-button" data-i18n="repair.button"></button>
+
 <div class="iv-log" id="log"></div>
 
 <script type="application/javascript">
   /* global Homey */
-  let running = false;
+  (function () {
+    let running = false;
 
-  function addLine(mark, text, cls) {
-    const log = document.getElementById('log');
-    log.classList.add('is-visible');
+    function addLine(mark, text, cls) {
+      const log = document.getElementById('log');
+      if (!log) return;
 
-    const line = document.createElement('div');
-    line.className = 'iv-log-line';
+      const line = document.createElement('div');
+      line.className = 'iv-log-line';
 
-    const markEl = document.createElement('span');
-    markEl.className = `iv-mark ${cls || ''}`;
-    markEl.textContent = mark;
+      const markEl = document.createElement('span');
+      markEl.className = `iv-mark ${cls || ''}`;
+      markEl.textContent = mark;
 
-    const textEl = document.createElement('span');
-    // textContent, not innerHTML: these strings carry device-reported values
-    textEl.textContent = text;
+      const textEl = document.createElement('span');
+      // textContent, not innerHTML: these strings carry device-reported values
+      textEl.textContent = text;
 
-    line.appendChild(markEl);
-    line.appendChild(textEl);
-    log.appendChild(line);
-  }
+      line.appendChild(markEl);
+      line.appendChild(textEl);
+      log.appendChild(line);
+    }
 
-  function onHomeyReady(Homey) {
-    Homey.setTitle(Homey.__('repair.title'));
-
-    // Progress messages streamed from the driver while repair runs
-    Homey.on('repair_progress', (message) => {
-      addLine('·', message);
-      return null;
-    });
-
-    async function runRepair() {
-      if (running) return;
-      running = true;
-
-      document.getElementById('log').innerHTML = '';
-      Homey.showLoadingOverlay();
-
+    // Fall back to the key's own default if a translation is missing, so a
+    // bad key can never leave a control blank
+    function t(homey, key, fallback) {
       try {
-        const result = await Homey.emit('repair_start');
-
-        addLine('✓', Homey.__('repair.result_connected'), 'iv-ok');
-
-        if (result && result.readings) {
-          addLine('✓', result.readings, 'iv-ok');
-        }
-
-        if (result && result.authenticated) {
-          addLine('✓', Homey.__('repair.result_auth_ok'), 'iv-ok');
-        } else {
-          addLine('!', Homey.__('repair.result_auth_missing'), 'iv-warn');
-        }
-
-        Homey.setNavigationClose();
+        const value = homey.__(key);
+        return value && value !== key ? value : fallback;
       } catch (err) {
-        addLine('✗', String((err && err.message) || err), 'iv-fail');
-        addLine('·', Homey.__('repair.result_failed_hint'));
-      } finally {
-        Homey.hideLoadingOverlay();
-        running = false;
+        return fallback;
       }
     }
 
-    // The repair button lives in the view's own body so it works on every
-    // Homey client, rather than depending on navigation chrome
-    const button = document.createElement('button');
-    button.className = 'homey-button-primary-full';
-    button.textContent = Homey.__('repair.button');
-    button.addEventListener('click', runRepair);
-    document.body.appendChild(button);
+    window.onHomeyReady = function onHomeyReady(homey) {
+      const button = document.getElementById('repair-button');
 
-    Homey.ready();
-  }
+      // Label the button from script too: if data-i18n did not resolve, an
+      // empty button is indistinguishable from a missing one
+      if (button && !button.textContent.trim()) {
+        button.textContent = t(homey, 'repair.button', 'Repair');
+      }
+
+      async function runRepair() {
+        if (running) return;
+        running = true;
+
+        document.getElementById('log').textContent = '';
+        if (button) button.disabled = true;
+
+        try {
+          homey.showLoadingOverlay();
+        } catch (err) {
+          // Overlay is cosmetic - never let it stop the repair
+        }
+
+        try {
+          const result = await homey.emit('repair_start');
+
+          addLine('✓', t(homey, 'repair.result_connected', 'Fan reconnected'), 'iv-ok');
+
+          if (result && result.readings) {
+            addLine('✓', result.readings, 'iv-ok');
+          }
+
+          if (result && result.authenticated) {
+            addLine('✓', t(homey, 'repair.result_auth_ok', 'Control enabled'), 'iv-ok');
+          } else {
+            addLine('!', t(homey, 'repair.result_auth_missing', 'Still read-only'), 'iv-warn');
+          }
+
+          try {
+            homey.setNavigationClose();
+          } catch (err) {
+            // Navigation chrome differs per client; not worth failing over
+          }
+        } catch (err) {
+          addLine('✗', String((err && err.message) || err), 'iv-fail');
+          addLine('·', t(homey, 'repair.result_failed_hint', 'Could not reach the fan.'));
+        } finally {
+          try {
+            homey.hideLoadingOverlay();
+          } catch (err) {
+            // as above
+          }
+          if (button) button.disabled = false;
+          running = false;
+        }
+      }
+
+      if (button) button.addEventListener('click', runRepair);
+
+      // Progress lines streamed from the driver while repair runs
+      try {
+        homey.on('repair_progress', (message) => {
+          addLine('·', message);
+          return null;
+        });
+      } catch (err) {
+        // Progress is informational; repair still works without it
+      }
+
+      try {
+        homey.setTitle(t(homey, 'repair.title', 'Repair'));
+      } catch (err) {
+        // Some clients do not allow setting a title here
+      }
+
+      homey.ready();
+    };
+  }());
 </script>

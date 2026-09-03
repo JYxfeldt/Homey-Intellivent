@@ -29,13 +29,29 @@ class IntelliventSkyDriver extends Homey.Driver {
     this.log(`Repair started for ${device.getName()}`);
 
     session.setHandler('repair_start', async () => {
+      this.log(`Repair requested for ${device.getName()}`);
+
       // Stream progress so the user sees a slow BLE scan working rather than
       // an unexplained wait - a full rescan plus discovery can take ~40 s
       const onProgress = (message) => {
-        session.emit('repair_progress', message).catch(() => {});
+        this.log(`Repair progress: ${message}`);
+        try {
+          // Older clients return undefined rather than a promise here
+          const sent = session.emit('repair_progress', message);
+          if (sent && typeof sent.catch === 'function') sent.catch(() => {});
+        } catch (err) {
+          // The view may already be gone - never fail the repair over this
+        }
       };
 
-      return device.runRepair(onProgress);
+      try {
+        const result = await device.runRepair(onProgress);
+        this.log(`Repair finished: ${JSON.stringify(result)}`);
+        return result;
+      } catch (err) {
+        this.error(`Repair failed: ${err.message}`);
+        throw err;
+      }
     });
 
     session.setHandler('disconnect', async () => {
