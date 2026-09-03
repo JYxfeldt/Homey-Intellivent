@@ -1,225 +1,169 @@
-<style>
-  .iv-section {
-    margin-bottom: 20px;
-  }
-
-  .iv-steps {
-    margin: 8px 0 0;
-    padding-left: 20px;
-    line-height: 1.55;
-  }
-
-  .iv-steps li {
-    margin-bottom: 6px;
-  }
-
-  .iv-note {
-    opacity: 0.7;
-    font-size: 0.9em;
-    line-height: 1.45;
-  }
-
-  /* Styled without relying on Homey's own button classes: if that stylesheet
-     is not present in a repair view the button must still be visible. */
-  .iv-button {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    margin: 24px 0 8px;
-    padding: 14px 16px;
-    border: 0;
-    border-radius: 10px;
-    background: #0091ff;
-    color: #fff;
-    font-size: 1em;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    -webkit-appearance: none;
-    appearance: none;
-  }
-
-  .iv-button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  .iv-log {
-    margin-top: 8px;
-    padding: 12px;
-    border-radius: 8px;
-    background: rgba(127, 127, 127, 0.12);
-    font-size: 0.92em;
-    line-height: 1.6;
-  }
-
-  .iv-log:empty {
-    display: none;
-  }
-
-  .iv-log-line {
-    display: flex;
-    gap: 8px;
-    align-items: baseline;
-  }
-
-  .iv-log-line .iv-mark {
-    flex: 0 0 auto;
-    width: 1em;
-  }
-
-  .iv-ok {
-    color: #2e9e5b;
-  }
-
-  .iv-fail {
-    color: #d0454c;
-  }
-
-  .iv-warn {
-    color: #c98a00;
-  }
-</style>
-
-<div class="iv-section">
+<div style="margin-bottom:20px">
   <p data-i18n="repair.intro"></p>
 </div>
 
-<div class="iv-section">
+<div style="margin-bottom:20px">
   <b data-i18n="repair.pairing_mode_title"></b>
-  <ol class="iv-steps">
-    <li data-i18n="repair.pairing_mode_step1"></li>
-    <li data-i18n="repair.pairing_mode_step2"></li>
-    <li data-i18n="repair.pairing_mode_step3"></li>
+  <ol style="margin:8px 0 0;padding-left:20px;line-height:1.55">
+    <li style="margin-bottom:6px" data-i18n="repair.pairing_mode_step1"></li>
+    <li style="margin-bottom:6px" data-i18n="repair.pairing_mode_step2"></li>
+    <li style="margin-bottom:6px" data-i18n="repair.pairing_mode_step3"></li>
   </ol>
-  <p class="iv-note" data-i18n="repair.pairing_mode_note"></p>
+  <p style="opacity:0.7;font-size:0.9em;line-height:1.45" data-i18n="repair.pairing_mode_note"></p>
 </div>
 
 <!--
-  The button and the log live in the markup, not in script.
+  Everything here is deliberately defensive, because two earlier attempts
+  failed in ways that looked identical from the outside - a view that renders
+  but does nothing:
 
-  The first version created the button inside onHomeyReady(). The static text
-  above rendered from data-i18n regardless, so when anything in that callback
-  threw before reaching the button - or the callback never ran at all - the
-  view looked complete but had nothing to press. Declaring both here means the
-  control is present even if the script fails, and any such failure is now
-  reported into the log instead of vanishing.
+  1. The button was created inside onHomeyReady(). data-i18n is resolved by
+     Homey regardless of whether the view's script runs, so the instructions
+     appeared while the only control silently did not.
+  2. The button was styled through a <style> block and wired with
+     addEventListener. It rendered unstyled and did not react, which points at
+     the <style> and the wiring not surviving however Homey injects this file.
+
+  So: inline styles rather than a <style> block, an inline onclick attribute
+  calling a global function rather than addEventListener, and a plain
+  onHomeyReady function declaration exactly as the SDK documents it.
+
+  The status line below is a deliberate diagnostic. If the script runs at all,
+  it says so on screen - which turns "nothing happens" into a fact we can read
+  off a screenshot instead of guessing at again.
 -->
-<button type="button" class="iv-button" id="repair-button" data-i18n="repair.button"></button>
+<button
+  type="button"
+  id="repair-button"
+  onclick="startRepair()"
+  style="display:block;width:100%;box-sizing:border-box;margin:24px 0 8px;padding:14px 16px;border:0;border-radius:10px;background:#0091ff;color:#ffffff;font-size:1em;font-weight:600;font-family:inherit;cursor:pointer;-webkit-appearance:none;appearance:none"
+  data-i18n="repair.button"
+></button>
 
-<div class="iv-log" id="log"></div>
+<div id="status" style="margin-top:8px;font-size:0.85em;opacity:0.6"></div>
+
+<div id="log" style="margin-top:8px;font-size:0.92em;line-height:1.6"></div>
 
 <script type="application/javascript">
   /* global Homey */
-  (function () {
-    let running = false;
+  var ivHomey = null;
+  var ivRunning = false;
 
-    function addLine(mark, text, cls) {
-      const log = document.getElementById('log');
-      if (!log) return;
+  function ivSetStatus(text) {
+    var el = document.getElementById('status');
+    if (el) el.textContent = text;
+  }
 
-      const line = document.createElement('div');
-      line.className = 'iv-log-line';
+  function ivAddLine(mark, text, colour) {
+    var log = document.getElementById('log');
+    if (!log) return;
 
-      const markEl = document.createElement('span');
-      markEl.className = `iv-mark ${cls || ''}`;
-      markEl.textContent = mark;
+    var line = document.createElement('div');
+    line.style.display = 'flex';
+    line.style.gap = '8px';
+    line.style.alignItems = 'baseline';
+    if (colour) line.style.color = colour;
 
-      const textEl = document.createElement('span');
-      // textContent, not innerHTML: these strings carry device-reported values
-      textEl.textContent = text;
+    var markEl = document.createElement('span');
+    markEl.style.flex = '0 0 auto';
+    markEl.style.width = '1em';
+    markEl.textContent = mark;
 
-      line.appendChild(markEl);
-      line.appendChild(textEl);
-      log.appendChild(line);
+    var textEl = document.createElement('span');
+    // textContent, not innerHTML: these strings carry device-reported values
+    textEl.textContent = text;
+
+    line.appendChild(markEl);
+    line.appendChild(textEl);
+    log.appendChild(line);
+  }
+
+  // Fall back to a literal when a key does not resolve, so a bad key can never
+  // leave a control blank or a message empty
+  function ivT(key, fallback) {
+    try {
+      var value = ivHomey.__(key);
+      return value && value !== key ? value : fallback;
+    } catch (err) {
+      return fallback;
     }
+  }
 
-    // Fall back to the key's own default if a translation is missing, so a
-    // bad key can never leave a control blank
-    function t(homey, key, fallback) {
-      try {
-        const value = homey.__(key);
-        return value && value !== key ? value : fallback;
-      } catch (err) {
-        return fallback;
-      }
+  function startRepair() {
+    if (!ivHomey) {
+      ivSetStatus('Homey is not ready yet - close and reopen this screen.');
+      return;
     }
+    if (ivRunning) return;
+    ivRunning = true;
 
-    window.onHomeyReady = function onHomeyReady(homey) {
-      const button = document.getElementById('repair-button');
+    var button = document.getElementById('repair-button');
+    if (button) button.disabled = true;
 
-      // Label the button from script too: if data-i18n did not resolve, an
-      // empty button is indistinguishable from a missing one
-      if (button && !button.textContent.trim()) {
-        button.textContent = t(homey, 'repair.button', 'Repair');
-      }
+    document.getElementById('log').textContent = '';
+    ivSetStatus(ivT('repair.status_running', 'Repairing...'));
 
-      async function runRepair() {
-        if (running) return;
-        running = true;
+    ivHomey.emit('repair_start')
+      .then(function (result) {
+        ivAddLine('✓', ivT('repair.result_connected', 'Fan reconnected'), '#2e9e5b');
 
-        document.getElementById('log').textContent = '';
-        if (button) button.disabled = true;
-
-        try {
-          homey.showLoadingOverlay();
-        } catch (err) {
-          // Overlay is cosmetic - never let it stop the repair
+        if (result && result.readings) {
+          ivAddLine('✓', result.readings, '#2e9e5b');
         }
 
-        try {
-          const result = await homey.emit('repair_start');
-
-          addLine('✓', t(homey, 'repair.result_connected', 'Fan reconnected'), 'iv-ok');
-
-          if (result && result.readings) {
-            addLine('✓', result.readings, 'iv-ok');
-          }
-
-          if (result && result.authenticated) {
-            addLine('✓', t(homey, 'repair.result_auth_ok', 'Control enabled'), 'iv-ok');
-          } else {
-            addLine('!', t(homey, 'repair.result_auth_missing', 'Still read-only'), 'iv-warn');
-          }
-
-          try {
-            homey.setNavigationClose();
-          } catch (err) {
-            // Navigation chrome differs per client; not worth failing over
-          }
-        } catch (err) {
-          addLine('✗', String((err && err.message) || err), 'iv-fail');
-          addLine('·', t(homey, 'repair.result_failed_hint', 'Could not reach the fan.'));
-        } finally {
-          try {
-            homey.hideLoadingOverlay();
-          } catch (err) {
-            // as above
-          }
-          if (button) button.disabled = false;
-          running = false;
+        if (result && result.authenticated) {
+          ivAddLine('✓', ivT('repair.result_auth_ok', 'Control enabled'), '#2e9e5b');
+        } else {
+          ivAddLine('!', ivT('repair.result_auth_missing', 'Still read-only'), '#c98a00');
         }
-      }
 
-      if (button) button.addEventListener('click', runRepair);
+        ivSetStatus(ivT('repair.status_done', 'Done.'));
+        try {
+          ivHomey.setNavigationClose();
+        } catch (err) {
+          // Navigation chrome differs per client
+        }
+      })
+      .catch(function (err) {
+        ivAddLine('✗', String((err && err.message) || err), '#d0454c');
+        ivAddLine('·', ivT('repair.result_failed_hint', 'Could not reach the fan.'));
+        ivSetStatus(ivT('repair.status_failed', 'Failed.'));
+      })
+      .then(function () {
+        var b = document.getElementById('repair-button');
+        if (b) b.disabled = false;
+        ivRunning = false;
+      });
+  }
 
-      // Progress lines streamed from the driver while repair runs
-      try {
-        homey.on('repair_progress', (message) => {
-          addLine('·', message);
-          return null;
-        });
-      } catch (err) {
-        // Progress is informational; repair still works without it
-      }
+  function onHomeyReady(Homey) {
+    ivHomey = Homey;
 
-      try {
-        homey.setTitle(t(homey, 'repair.title', 'Repair'));
-      } catch (err) {
-        // Some clients do not allow setting a title here
-      }
+    // Proof of life: if this text appears, the script ran and the button is
+    // wired. If it does not, the script never executed and nothing else in
+    // here can be trusted.
+    ivSetStatus(ivT('repair.status_ready', 'Ready.'));
 
-      homey.ready();
-    };
-  }());
+    var button = document.getElementById('repair-button');
+    if (button && !button.textContent.trim()) {
+      button.textContent = ivT('repair.button', 'Repair');
+    }
+
+    try {
+      Homey.on('repair_progress', function (message) {
+        ivAddLine('·', message);
+        return null;
+      });
+    } catch (err) {
+      // Progress is informational; repair still works without it
+    }
+
+    try {
+      Homey.setTitle(ivT('repair.title', 'Repair'));
+    } catch (err) {
+      // Some clients do not allow setting a title here
+    }
+
+    Homey.ready();
+  }
 </script>

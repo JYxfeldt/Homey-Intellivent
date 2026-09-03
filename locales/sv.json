@@ -124,6 +124,10 @@
     "result_auth_ok": "Autentiseringskod sparad — styrning är aktiverad",
     "result_auth_missing": "Ingen autentiseringskod: fläkten var inte i parkopplingsläge, så den förblir skrivskyddad. Följ stegen ovan och reparera igen för att aktivera styrning.",
     "result_failed_hint": "Fläkten kunde inte nås. Kontrollera att den har ström och är inom räckvidd, och försök igen. Om upprepade försök misslyckas samtidigt som andra Bluetooth-enheter också slutar fungera kan Homeys Bluetooth behöva startas om.",
-    "error_no_status_characteristic": "Ansluten, men fläkten exponerade inte sin statuskaraktäristik. Försök reparera igen."
+    "error_no_status_characteristic": "Ansluten, men fläkten exponerade inte sin statuskaraktäristik. Försök reparera igen.",
+    "status_ready": "Redo — tryck på Reparera.",
+    "status_running": "Reparerar…",
+    "status_done": "Klart.",
+    "status_failed": "Misslyckades."
   }
 }

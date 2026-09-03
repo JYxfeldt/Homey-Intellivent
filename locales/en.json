@@ -124,6 +124,10 @@
     "result_auth_ok": "Authentication code stored — control is enabled",
     "result_auth_missing": "No authentication code: the fan was not in pairing mode, so it stays read-only. Follow the steps above and repair again to enable control.",
     "result_failed_hint": "The fan could not be reached. Check that it has power and is in range, then try again. If repeated attempts fail while other Bluetooth devices also stop working, Homey's Bluetooth may need a restart.",
-    "error_no_status_characteristic": "Connected, but the fan did not expose its status characteristic. Try the repair again."
+    "error_no_status_characteristic": "Connected, but the fan did not expose its status characteristic. Try the repair again.",
+    "status_ready": "Ready — press Repair.",
+    "status_running": "Repairing…",
+    "status_done": "Done.",
+    "status_failed": "Failed."
   }
 }
