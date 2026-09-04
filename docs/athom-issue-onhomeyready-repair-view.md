@@ -1,14 +1,6 @@
-# Draft bug report for athombv/homey-apps-sdk-issues
+# Bug report for athombv/homey-apps-sdk-issues
 
-**Status: not submitted.** Review before opening. Suggested tracker:
-[athombv/homey-apps-sdk-issues](https://github.com/athombv/homey-apps-sdk-issues/issues)
-— the same tracker as #454 and #245.
-
-Please search the tracker for `onHomeyReady` before opening; the duplicate
-check behind this draft was a web search, not an exhaustive search of the
-tracker itself.
-
----
+**Submitted:** https://github.com/athombv/homey-apps-sdk-issues/issues/457
 
 ## Title
 
