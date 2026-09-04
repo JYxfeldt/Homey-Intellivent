@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -173,29 +173,6 @@
               "value": 15,
               "min": 1,
               "max": 60,
-              "step": 1,
-              "units": "min"
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Connection"
-          },
-          "children": [
-            {
-              "id": "session_recycle_minutes",
-              "type": "number",
-              "label": {
-                "en": "Recycle Connection After"
-              },
-              "hint": {
-                "en": "The fan eventually drops the Bluetooth session itself, and when it does, Homey's Bluetooth manager can end up unable to reconnect until Homey is restarted (Athom issue #454). Disconnecting first, from Homey's side, keeps that teardown under our control. Lower it if the fan still drops out; set 0 to keep one connection open indefinitely."
-              },
-              "value": 8,
-              "min": 0,
-              "max": 120,
               "step": 1,
               "units": "min"
             }

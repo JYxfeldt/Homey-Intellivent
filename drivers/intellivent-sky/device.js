@@ -23,7 +23,6 @@ class IntelliventSkyDevice extends Homey.Device {
     this._reconnectTimer = null;
     this._consecutiveConnectFailures = 0;
     this._fetchInFlight = false;
-    this._sessionStartedAt = 0;
     this._operationQueue = Promise.resolve();
     this._updateChain = Promise.resolve();
     this._isDeleted = false;
@@ -245,48 +244,6 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * Hand the session back before the fan takes it.
-   *
-   * The fan drops its GATT session on its own after minutes to hours, even
-   * with traffic every 20 s. Per athombv/homey-apps-sdk-issues#454 a
-   * peripheral-initiated drop is what wedges Homey's BLE manager into a state
-   * only a full reboot clears, so the one lever this app has is to always be
-   * the side that disconnects. A clean teardown here costs one reconnect;
-   * losing the race costs a Homey reboot.
-   *
-   * Honest caveat: that a clean app-initiated disconnect avoids the wedge is
-   * inference from #454, not something this app has proven. The recycle
-   * interval is a device setting so it can be tuned or switched off (0).
-   *
-   * @returns {boolean} - True if the session was recycled
-   */
-  async _recycleSessionIfStale() {
-    if (!this._isConnected || !this._sessionStartedAt) return false;
-
-    const minutes = this._sessionRecycleMinutes();
-    if (minutes <= 0) return false;
-
-    const ageMs = Date.now() - this._sessionStartedAt;
-    if (ageMs < minutes * 60000) return false;
-
-    this.log(`Session is ${Math.round(ageMs / 60000)} min old, recycling it before the fan does`);
-    await this._disconnect(true).catch((err) => this.log(`Recycle disconnect failed: ${err.message}`));
-    this._sessionStartedAt = 0;
-    return true;
-  }
-
-  /**
-   * Configured session lifetime in minutes (0 disables recycling)
-   * @returns {number}
-   */
-  _sessionRecycleMinutes() {
-    const configured = this.getSetting('session_recycle_minutes');
-    return Number.isFinite(configured)
-      ? configured
-      : Constants.DEFAULT_SESSION_RECYCLE_MINUTES;
-  }
-
-  /**
    * Ask for another connection attempt later, with capped exponential backoff.
    *
    * This is the single owner of "try again": one pending timer at a time, and
@@ -441,7 +398,6 @@ class IntelliventSkyDevice extends Homey.Device {
       }
 
       this._isConnected = true;
-      this._sessionStartedAt = Date.now();
 
       // Back to a healthy link: forget every accumulated penalty, so the next
       // isolated blip retries in 5 s rather than resuming a 5 minute backoff
@@ -634,7 +590,6 @@ class IntelliventSkyDevice extends Homey.Device {
       this._peripheral = null;
       this._characteristics = {};
       this._isConnected = false;
-      this._sessionStartedAt = 0;
       this._intentionalDisconnect = false;
     }
   }
@@ -1164,9 +1119,6 @@ class IntelliventSkyDevice extends Homey.Device {
     this._fetchInFlight = true;
 
     try {
-      // Be the side that hangs up. The reconnect below re-establishes the
-      // session immediately, so this costs one reconnect rather than a gap.
-      await this._recycleSessionIfStale();
 
       // Single attempt: the reconnect scheduler owns retrying, with a backoff
       // that survives across calls. Retrying here as well would multiply the
