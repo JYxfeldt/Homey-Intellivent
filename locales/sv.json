@@ -128,6 +128,7 @@
     "status_ready": "Redo — tryck på Reparera.",
     "status_running": "Reparerar…",
     "status_done": "Klart.",
-    "status_failed": "Misslyckades."
+    "status_failed": "Misslyckades.",
+    "status_waiting": "Väntar på Homey…"
   }
 }

@@ -90,8 +90,14 @@
   }
 
   function startRepair() {
+    // Last resort: if the platform exposed a global Homey but never called
+    // onHomeyReady, use it directly rather than refusing to do anything
+    if (!ivHomey && typeof window !== 'undefined' && window.Homey) {
+      ivInit(window.Homey, 'global-on-click');
+    }
+
     if (!ivHomey) {
-      ivSetStatus('Homey is not ready yet - close and reopen this screen.');
+      ivSetStatus('Homey object never arrived - please report this.');
       return;
     }
     if (ivRunning) return;
@@ -136,13 +142,12 @@
       });
   }
 
-  function onHomeyReady(Homey) {
-    ivHomey = Homey;
-
-    // Proof of life: if this text appears, the script ran and the button is
-    // wired. If it does not, the script never executed and nothing else in
-    // here can be trusted.
-    ivSetStatus(ivT('repair.status_ready', 'Ready.'));
+  // Wire everything up once, from whichever route actually delivered the
+  // Homey object. `source` is shown on screen so the next screenshot says
+  // which mechanism worked instead of leaving it to be inferred again.
+  function ivInit(homeyObj, source) {
+    if (ivHomey || !homeyObj) return;
+    ivHomey = homeyObj;
 
     var button = document.getElementById('repair-button');
     if (button && !button.textContent.trim()) {
@@ -150,7 +155,7 @@
     }
 
     try {
-      Homey.on('repair_progress', function (message) {
+      homeyObj.on('repair_progress', function (message) {
         ivAddLine('·', message);
         return null;
       });
@@ -159,11 +164,53 @@
     }
 
     try {
-      Homey.setTitle(ivT('repair.title', 'Repair'));
+      homeyObj.setTitle(ivT('repair.title', 'Repair'));
     } catch (err) {
       // Some clients do not allow setting a title here
     }
 
-    Homey.ready();
+    try {
+      homeyObj.ready();
+    } catch (err) {
+      // Already shown, or not supported on this client
+    }
+
+    ivSetStatus(ivT('repair.status_ready', 'Ready.') + ' [' + source + ']');
+  }
+
+  // The documented route. Declared as a plain global function exactly as the
+  // SDK shows it, and also assigned to window in case this file is evaluated
+  // in a scope where the declaration would not become a global.
+  function onHomeyReady(Homey) {
+    ivInit(Homey, 'onHomeyReady');
+  }
+
+  if (typeof window !== 'undefined') {
+    window.onHomeyReady = onHomeyReady;
+
+    // Fallback route. onHomeyReady demonstrably never fired here, while the
+    // rest of the script did, so rather than guess at why, also watch for a
+    // global Homey object appearing and initialise from that. Whichever
+    // arrives first wins; ivInit is idempotent.
+    var ivTries = 0;
+    var ivTimer = window.setInterval(function () {
+      if (ivHomey) {
+        window.clearInterval(ivTimer);
+        return;
+      }
+      if (window.Homey) {
+        window.clearInterval(ivTimer);
+        ivInit(window.Homey, 'global');
+        return;
+      }
+      ivTries += 1;
+      if (ivTries === 5) {
+        ivSetStatus(ivT('repair.status_waiting', 'Waiting for Homey…'));
+      }
+      if (ivTries > 100) { // ~20 s
+        window.clearInterval(ivTimer);
+        ivSetStatus('Homey object never arrived - please report this.');
+      }
+    }, 200);
   }
 </script>
