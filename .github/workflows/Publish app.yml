@@ -3,18 +3,21 @@ on:
   workflow_dispatch:
 
 jobs:  
-    main:
-      name: Publish Homey App
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v4
-        
-        - name: Publish
-          uses: athombv/github-action-homey-app-publish@master
-          id: publish
-          with:
-            personal_access_token: ${{ secrets.HOMEY_PAT }}
-
-        - name: URL
-          run: |
-            echo "Manage your app at ${{ steps.publish.outputs.url }}." >> $GITHUB_STEP_SUMMARY
+  main:
+    name: Validate Homey App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: athombv/github-action-homey-app-validate@master
+        with:
+          level: verified
+      
+      - name: Publish Homey app
+        uses: athombv/github-action-homey-app-publish@master
+        id: publish
+        with:
+          personal_access_token: ${{ secrets.HOMEY_PAT }}
+          
+      - name: URL 
+        run: |
+          echo "Manage your app at ${{ steps.publish.outputs.url }}." >> $GITHUB_STEP_SUMMARY
