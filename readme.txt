@@ -1,0 +1,1 @@
+Control your bathroom ventilation, read temperature and humidity, set fan speeds, adjust sensor detection levels or trigger boost mode when you leave the room.

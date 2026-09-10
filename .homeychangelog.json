@@ -4,5 +4,8 @@
   },
   "0.2.0": {
     "en": "Protocol fixes verified against pyfreshintellivent (mode map, sensitivity levels, airing payload, sensor layout), BLE reliability fixes (operation queue, on/off tile, reconnect heartbeat), and the required BLE permission. Note: sensitivity values in 'configure humidity' flows created on 0.1.x must be re-selected once."
+  },
+  "0.4.1": {
+    "en": "First test release"
   }
 }

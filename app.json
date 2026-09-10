@@ -5,10 +5,10 @@
   "sdk": 3,
   "platforms": ["local"],
   "name": {
-    "en": "Intellivent Fresh"
+    "en": "Intellivent Sky/Ice"
   },
   "description": {
-    "en": "Control your Intellivent Fresh ventilation fans via Bluetooth"
+    "en": "Intelligent bathroom fans"
   },
   "category": ["climate"],
   "tags": {

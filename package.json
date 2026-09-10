@@ -1,7 +1,7 @@
 {
-  "name": "com.intellivent.fresh",
+  "name": "Intellivent Sky/Ice",
   "version": "1.0.0",
-  "description": "Homey app to control Intellivent Fresh ventilation fans via Bluetooth",
+  "description": "Intelligent bathroom fans",
   "main": "app.js",
   "scripts": {
     "lint": "eslint --ext .js .",
