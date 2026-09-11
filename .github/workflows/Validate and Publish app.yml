@@ -2,6 +2,9 @@ name: Validate and Publish Homey App
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:  
     Validate:
       name: Validate Homey App
