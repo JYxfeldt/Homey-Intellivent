@@ -4,5 +4,8 @@
   },
   "0.4.1": {
     "en": "First test release"
+  },
+  "0.4.2": {
+    "en": "Fixed missing app store icons and driver images, expanded the app description, and cleaned up the changelog history."
   }
 }
