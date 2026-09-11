@@ -148,9 +148,4 @@ MIT License
 
 ## Changelog
 
-### 1.0.0
-- Initial release
-- Support for Intellivent Sky devices
-- Basic fan control (on/off, speed, modes)
-- Temperature and humidity monitoring
-- Flow support for automation
+See [`.homeychangelog.json`](.homeychangelog.json) for the version history shown on the Homey App Store page.
