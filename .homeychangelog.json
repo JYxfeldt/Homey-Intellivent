@@ -1,11 +1,18 @@
 {
   "0.2.0": {
-    "en": "Protocol fixes verified against pyfreshintellivent (mode map, sensitivity levels, airing payload, sensor layout), BLE reliability fixes (operation queue, on/off tile, reconnect heartbeat), and the required BLE permission. Note: sensitivity values in 'configure humidity' flows created on 0.1.x must be re-selected once."
+    "en": "Protocol fixes verified against pyfreshintellivent (mode map, sensitivity levels, airing payload, sensor layout), BLE reliability fixes (operation queue, on/off tile, reconnect heartbeat), and the required BLE permission. Note: sensitivity values in 'configure humidity' flows created on 0.1.x must be re-selected once.",
+    "sv": "Protokollrättningar verifierade mot pyfreshintellivent (lägen, känslighetsnivåer, vädring, sensordata), stabilare Bluetooth (kö för kommandon, på/av-rutan, återanslutning) och den Bluetooth-behörighet som krävs. Obs: känsligheten i flöden med 'ställ in fuktstyrning' som skapats i 0.1.x behöver väljas om en gång."
   },
   "0.4.1": {
-    "en": "First test release"
+    "en": "First public test version: control and monitor Intellivent Sky fans over Bluetooth, with a Repair option for fans that stop responding.",
+    "sv": "Första publika testversionen: styr och övervaka Intellivent Sky-fläktar via Bluetooth, med en Reparera-funktion för fläktar som slutar svara."
   },
   "0.4.2": {
-    "en": "Fixed missing app store icons and driver images, expanded the app description, and cleaned up the changelog history."
+    "en": "Fixed missing app store icons and driver images, expanded the app description, and cleaned up the changelog history.",
+    "sv": "Rättade saknade ikoner och bilder i appbutiken, utökade appbeskrivningen och städade i ändringsloggen."
+  },
+  "0.4.4": {
+    "en": "The app is now called Fresh Intellivent and is fully available in Swedish. Adding a fan now starts with instructions for putting it in pairing mode, error messages are clearer, and the authentication code can no longer be edited by mistake.",
+    "sv": "Appen heter nu Fresh Intellivent och finns helt på svenska. När du lägger till en fläkt visas först instruktioner för parkopplingsläget, felmeddelandena är tydligare och autentiseringskoden kan inte längre ändras av misstag."
   }
 }

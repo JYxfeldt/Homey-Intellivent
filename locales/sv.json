@@ -1,111 +1,20 @@
 {
   "pairing": {
-    "error_discovery": "Kunde inte upptäcka Bluetooth-enheter. Kontrollera att Bluetooth är aktiverat och att enheten är i parkopplingsläge."
+    "error_discovery": "Kunde inte upptäcka Bluetooth-enheter. Kontrollera att Bluetooth är aktiverat och att enheten är i parkopplingsläge.",
+    "instructions_title": "Sätt fläkten i parkopplingsläge",
+    "instructions_intro": "Fläkten lämnar bara ut sin autentiseringskod när den är i Bluetooth-parkopplingsläge. Utan koden kan Homey läsa av fläkten, men inte styra den.",
+    "instructions_step1": "Kontrollera att fläkten har ström.",
+    "instructions_step2": "Tryck en gång på på/av-symbolen på fläktens touchpanel.",
+    "instructions_step3": "Håll sedan ljus-/luftkvalitetssymbolen intryckt i 8 sekunder, tills den börjar blinka.",
+    "instructions_step4": "Tryck på Nästa medan symbolen blinkar för att söka efter fläkten."
   },
   "errors": {
-    "connection_failed": "Kunde inte ansluta till enheten. Kontrollera att den är inom Bluetooth-räckvidd.",
-    "authentication_failed": "Autentisering misslyckades. Parkoppla enheten igen.",
-    "write_failed": "Kunde inte skicka kommando till enheten.",
-    "read_failed": "Kunde inte läsa data från enheten.",
-    "read_only": "Enheten är i skrivskyddat läge. Parkoppla enheten korrekt för att aktivera styrning.",
-    "not_authenticated": "Inte autentiserad mot fläkten - kommandon ignoreras. Sätt fläkten i parkopplingsläge och parkoppla igen.",
-    "ble_unavailable": "Homeys Bluetooth-skanning har slutat fungera - inga närliggande enheter syns över huvud taget, så det handlar inte om räckvidd. En omstart av Homey brukar lösa det."
-  },
-  "settings": {
-    "auth_code": {
-      "title": "Autentiseringskod",
-      "hint": "Autentiseringskoden som hämtades från enheten vid parkoppling"
-    },
-    "firmware_version": {
-      "title": "Firmware-version"
-    },
-    "hardware_version": {
-      "title": "Hårdvaruversion"
-    }
-  },
-  "capabilities": {
-    "intellivent_mode": {
-      "title": "Läge",
-      "values": {
-        "off": "Av",
-        "constant_speed": "Konstant hastighet",
-        "humidity": "Fuktighet",
-        "light": "Ljus",
-        "voc": "VOC",
-        "timer": "Timer",
-        "boost": "Boost",
-        "airing": "Vädring",
-        "pause": "Paus"
-      }
-    },
-    "measure_rpm": {
-      "title": "Aktuell RPM"
-    },
-    "intellivent_rpm": {
-      "title": "Fläkthastighet (RPM)"
-    },
-    "intellivent_humidity_enabled": {
-      "title": "Fuktighetsdetektering"
-    },
-    "intellivent_humidity_sensitivity": {
-      "title": "Fuktighetskänslighet",
-      "values": {
-        "1": "Låg",
-        "2": "Medium",
-        "3": "Hög"
-      }
-    },
-    "intellivent_light_enabled": {
-      "title": "Ljusdetektering"
-    },
-    "intellivent_light_sensitivity": {
-      "title": "Ljuskänslighet",
-      "values": {
-        "1": "Låg",
-        "2": "Medium",
-        "3": "Hög"
-      }
-    },
-    "intellivent_voc_enabled": {
-      "title": "Luktdetektering"
-    },
-    "intellivent_voc_sensitivity": {
-      "title": "Luktkänslighet",
-      "values": {
-        "1": "Låg",
-        "2": "Medium",
-        "3": "Hög"
-      }
-    }
-  },
-  "flow": {
-    "triggers": {
-      "mode_changed": {
-        "title": "Läge ändrades"
-      },
-      "humidity_changed": {
-        "title": "Fuktighet ändrades"
-      }
-    },
-    "conditions": {
-      "mode_is": {
-        "title": "Läge är..."
-      }
-    },
-    "actions": {
-      "set_mode": {
-        "title": "Ange läge"
-      },
-      "set_rpm": {
-        "title": "Ange fläkthastighet (RPM)"
-      },
-      "start_boost": {
-        "title": "Starta boost"
-      },
-      "configure_humidity": {
-        "title": "Konfigurera fuktighetsdetektering"
-      }
-    }
+    "connection_failed": "Kunde inte ansluta till fläkten. Kontrollera att den har ström och är inom Bluetooth-räckvidd.",
+    "write_failed": "Fläkten tog inte emot kommandot. Försök igen, eller kör Reparera på enheten om det fortsätter.",
+    "read_only": "Homey kan läsa av fläkten men inte styra den. Sätt fläkten i parkopplingsläge och kör Reparera på enheten.",
+    "not_authenticated": "Fläkten ignorerar kommandon från Homey. Sätt fläkten i parkopplingsläge och kör Reparera på enheten.",
+    "ble_unavailable": "Homeys Bluetooth-skanning har slutat fungera - inga närliggande enheter syns över huvud taget, så det handlar inte om räckvidd. En omstart av Homey brukar lösa det.",
+    "rate_limited": "Fläkten gick inte att nå flera gånger i rad. Homey väntar __seconds__ sekunder innan nästa försök."
   },
   "repair": {
     "title": "Reparera fläkt",

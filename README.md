@@ -1,6 +1,6 @@
-# Homey Intellivent Fresh
+# Fresh Intellivent for Homey
 
-Control your Intellivent Fresh ventilation fans via Bluetooth using your Homey Pro.
+Control your Fresh Intellivent ventilation fans via Bluetooth using your Homey Pro.
 
 ## Supported Devices
 
@@ -28,8 +28,8 @@ Control your Intellivent Fresh ventilation fans via Bluetooth using your Homey P
 ## Installation
 
 1. Install the app from the Homey App Store
-2. Go to Devices > Add Device > Intellivent Fresh
-3. Put your Intellivent device in pairing mode (see Pairing below)
+2. Go to Devices > Add Device > Fresh Intellivent
+3. Put your Intellivent device in pairing mode, as the first pairing screen describes (see Pairing below)
 4. Select your device from the list
 
 ## Flow Cards
@@ -43,8 +43,9 @@ Control your Intellivent Fresh ventilation fans via Bluetooth using your Homey P
 
 ### Actions
 - Set mode
-- Set fan speed (RPM)
+- Set fan speed
 - Start boost
+- Configure humidity detection
 
 ## Pairing
 
@@ -140,6 +141,7 @@ after 8 hours 21 minutes.
 
 ## Credits
 
+The app manifest credits contributors, and `THIRD_PARTY_NOTICES.txt` carries the upstream license.
 Based on the protocol reverse-engineering from [pyfreshintellivent](https://github.com/LaStrada/pyfreshintellivent) (upstream by LaStrada, fork at [JYxfeldt/pyfreshintellivent](https://github.com/JYxfeldt/pyfreshintellivent)).
 
 ## License
