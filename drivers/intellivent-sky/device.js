@@ -244,16 +244,7 @@ class IntelliventSkyDevice extends Homey.Device {
     listen('onoff', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting onoff to ${value}`);
-      await this._withConnection(async () => {
-        if (value) {
-          // Turn on - set to constant speed mode at the configured RPM
-          const rpm = this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM;
-          await this._setConstantSpeed(true, rpm);
-        } else {
-          // Turn off - disable all modes by pausing
-          await this._setPause(true, 0);
-        }
-      });
+      await this.setOnOff(value);
     });
 
     // Mode capability
@@ -1635,6 +1626,40 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Turn the fan off or on.
+   *
+   * Off pauses the fan. On undoes that without touching the fan's
+   * configuration: ending a pause lets the fan resume whatever it is set up
+   * to do (humidity, light, VOC, constant speed). Only when nothing is set up
+   * to run at all (mode 'off') does On fall back to constant speed. Turning
+   * on used to always enable constant speed, which permanently replaced an
+   * automatic setup with a fan that never stops.
+   * @param {boolean} on - True to turn on
+   */
+  async setOnOff(on) {
+    this._checkWriteAccess();
+    const mode = this.getCapabilityValue('intellivent_mode');
+
+    let shown = null;
+    await this._withConnection(async () => {
+      if (!on) {
+        await this._setPause(true, 0);
+        shown = 'pause';
+      } else if (mode === 'off') {
+        await this._setConstantSpeed(true, this.getCapabilityValue('intellivent_rpm') || Constants.DEFAULT_RPM);
+        shown = 'constant_speed';
+      } else if (mode === 'pause' || mode === null) {
+        // What the fan resumes is up to its configuration: its next status
+        // report shows it (null = no report yet, so end any pause to be sure)
+        await this._setPause(false, 0);
+      }
+      // Any other mode: already running, nothing to write
+    });
+
+    if (shown) await this._setModeCapability(shown);
+  }
+
+  /**
    * Set device mode
    * @param {string} mode - Mode to set
    */
@@ -1697,8 +1722,12 @@ class IntelliventSkyDevice extends Homey.Device {
       // reports: humidity/light/VOC/airing writes enable a feature, and the
       // fan decides when it runs - showing them straight away made the mode
       // flip back on the next report and fire mode_changed twice.
-      if (IntelliventSkyDevice.OPTIMISTIC_MODES.includes(mode)) {
-        await this._setModeCapability(mode);
+      // 'off' is written as a pause, and the fan reports it as one - show
+      // that, rather than 'off' flipping to 'pause' on the next report
+      const shown = mode === 'off' ? 'pause' : mode;
+      if (IntelliventSkyDevice.OPTIMISTIC_MODES.includes(shown)) {
+        await this._setModeCapability(shown);
+        await this.setCapabilityValue('onoff', shown !== 'pause').catch(this.error);
       }
     } catch (err) {
       this.error(`Failed to set mode: ${err.message}`);
@@ -2036,6 +2065,6 @@ class IntelliventSkyDevice extends Homey.Device {
 
 // Modes shown as soon as Homey writes them, because the fan reports exactly
 // these back. Everything else waits for the fan's own status report.
-IntelliventSkyDevice.OPTIMISTIC_MODES = ['off', 'pause', 'constant_speed', 'boost', 'timer'];
+IntelliventSkyDevice.OPTIMISTIC_MODES = ['pause', 'constant_speed', 'boost', 'timer'];
 
 module.exports = IntelliventSkyDevice;

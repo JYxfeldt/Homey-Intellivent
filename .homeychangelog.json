@@ -22,5 +22,9 @@
   "0.4.7": {
     "en": "Taps and Flow cards now give up with a clear message after 30 seconds instead of running minutes later. A fan whose connection keeps dropping no longer causes constant Bluetooth scans. The humidity trigger fires on changes of at least 1 %, the mode trigger gets a translated mode name, and firmware and hardware versions now show up in the device settings. Adding a fan no longer lists unrelated Bluetooth devices, and the authentication code is shown masked in settings.",
     "sv": "Tryck på enhetsrutan och flödeskort ger nu upp med ett tydligt meddelande efter 30 sekunder i stället för att köras flera minuter senare. En fläkt vars anslutning bryts gång på gång orsakar inte längre ständiga Bluetooth-sökningar. Luftfuktighetstriggern startar vid ändringar på minst 1 %, lägestriggern får ett översatt lägesnamn och firmware- och hårdvaruversion visas nu i enhetens inställningar. När du lägger till en fläkt listas inte längre andra Bluetooth-enheter, och autentiseringskoden visas maskerad i inställningarna."
+  },
+  "0.4.8": {
+    "en": "Turning the fan on after turning it off now resumes its own setup (humidity, light, air quality or constant speed) instead of switching it to constant speed for good. The Off mode is shown as the pause the fan reports.",
+    "sv": "När fläkten slås på igen efter att ha stängts av återupptar den nu sina egna inställningar (fukt, ljus, luftkvalitet eller konstant hastighet) i stället för att permanent växla till konstant hastighet. Läget Av visas som den paus fläkten rapporterar."
   }
 }
