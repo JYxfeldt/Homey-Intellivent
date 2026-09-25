@@ -26,6 +26,14 @@ class IntelliventSkyDevice extends Homey.Device {
     this._operationQueue = Promise.resolve();
     this._updateChain = Promise.resolve();
     this._isDeleted = false;
+    // Bumped by every connect attempt and every teardown. The connect is
+    // time-boxed but not cancellable, so an attempt that was abandoned can
+    // still finish later - it compares its number against this one and backs
+    // off instead of taking over the device's connection.
+    this._connectGen = 0;
+    // The fan's own 'authenticated' flag from its last status report. null
+    // means unknown (no report since the session was (re)authenticated).
+    this._lastAuthenticated = null;
 
     // Device-held configuration cached per connection (readback + own
     // writes), used to rebuild shared payloads without clobbering values set
@@ -80,6 +88,11 @@ class IntelliventSkyDevice extends Homey.Device {
   _checkWriteAccess() {
     if (this._isReadOnly()) {
       throw this._userError(this.homey.__('errors.read_only'));
+    }
+    // The fan itself reports this session as unauthenticated: it would accept
+    // the write and silently ignore it, while the tile showed the new value
+    if (this._lastAuthenticated === false) {
+      throw this._userError(this.homey.__('errors.not_authenticated'));
     }
   }
 
@@ -398,6 +411,7 @@ class IntelliventSkyDevice extends Homey.Device {
     }
 
     this._isConnecting = true;
+    const gen = ++this._connectGen;
 
     try {
       const { uuid, address } = this.getData();
@@ -413,7 +427,7 @@ class IntelliventSkyDevice extends Homey.Device {
       // rssi -81 fan), and an unbounded hold would starve every other device
       // of the radio for as long as it lasts.
       await this.homey.app.withBleLock(() => this._withTimeout(
-        this._connectAndDiscover(uuid, address),
+        this._connectAndDiscover(uuid, address, gen),
         Constants.CONNECT_TIMEOUT,
         'BLE connect/discovery',
       ));
@@ -485,7 +499,7 @@ class IntelliventSkyDevice extends Homey.Device {
     try {
       const humidityChar = this._characteristics.humidity;
       if (humidityChar) {
-        const humidity = Parser.parseHumidity(await humidityChar.read());
+        const humidity = Parser.parseHumidity(await this._gattRead(humidityChar, 'Humidity'));
         this._deviceConfig.humidityRpm = humidity.rpm;
         this.log(`Humidity readback: enabled=${humidity.enabled} raw=${humidity.detectionRaw} rpm=${humidity.rpm}`);
         await this.setCapabilityValue('intellivent_humidity_enabled', humidity.enabled).catch(this.error);
@@ -498,7 +512,7 @@ class IntelliventSkyDevice extends Homey.Device {
     try {
       const lightVocChar = this._characteristics.lightVoc;
       if (lightVocChar) {
-        const lightVoc = Parser.parseLightVoc(await lightVocChar.read());
+        const lightVoc = Parser.parseLightVoc(await this._gattRead(lightVocChar, 'Light/VOC'));
         this._deviceConfig.lightEnabled = lightVoc.light.enabled;
         this._deviceConfig.lightDetectionRaw = lightVoc.light.detectionRaw;
         this._deviceConfig.vocEnabled = lightVoc.voc.enabled;
@@ -521,7 +535,7 @@ class IntelliventSkyDevice extends Homey.Device {
     try {
       const constantSpeedChar = this._characteristics.constantSpeed;
       if (constantSpeedChar) {
-        const constantSpeed = Parser.parseConstantSpeed(await constantSpeedChar.read());
+        const constantSpeed = Parser.parseConstantSpeed(await this._gattRead(constantSpeedChar, 'Constant speed'));
         // Populate-once: the RPM slider is a control, not a sensor - syncing
         // it on every reconnect would snap back a value the user just chose
         if (this.getCapabilityValue('intellivent_rpm') === null
@@ -560,20 +574,31 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async _teardownConnection() {
     const peripheral = this._peripheral;
+    this._resetConnectionState();
+
+    if (peripheral) {
+      try {
+        await this._withTimeout(peripheral.disconnect(), Constants.GATT_TIMEOUT, 'BLE disconnect');
+      } catch (err) {
+        // Peripheral may already be gone - nothing to clean up
+      }
+    }
+  }
+
+  /**
+   * Forget everything tied to the current connection. Also abandons any
+   * connect attempt still in flight (see _connectGen).
+   */
+  _resetConnectionState() {
+    this._connectGen += 1;
     this._isConnected = false;
     this._peripheral = null;
     this._characteristics = {};
     this._notificationsSubscribed = false;
     // Cached device config is only trusted for the connection it was read on
     this._deviceConfig = {};
-
-    if (peripheral) {
-      try {
-        await peripheral.disconnect();
-      } catch (err) {
-        // Peripheral may already be gone - nothing to clean up
-      }
-    }
+    // A new session authenticates again; its state is unknown until reported
+    this._lastAuthenticated = null;
   }
 
   /**
@@ -585,14 +610,14 @@ class IntelliventSkyDevice extends Homey.Device {
     if (!char) return;
 
     try {
-      await char.subscribeToNotifications(async (data) => {
+      await this._withTimeout(char.subscribeToNotifications(async (data) => {
         try {
           const sensorData = Parser.parseSensorData(data);
           await this._queueCapabilityUpdate(sensorData);
         } catch (err) {
           this.error(`Notification parse error: ${err.message}`);
         }
-      });
+      }), Constants.GATT_TIMEOUT, 'Subscribe');
       this._notificationsSubscribed = true;
       this.log('Subscribed to DEVICE_STATUS notifications');
       // NOTE: polling deliberately keeps running as a heartbeat - see _startPolling()
@@ -604,10 +629,9 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * Disconnect from the BLE device
-   * @param {boolean} force - Force disconnect even if operations pending
+   * Disconnect from the BLE device on purpose (repair, shutdown, deletion)
    */
-  async _disconnect(force = false) {
+  async _disconnect() {
     if (this._peripheral) {
       // Tell the 'disconnect' handler this teardown is ours, so it does not
       // treat it as a surprise drop and schedule a competing reconnect
@@ -617,7 +641,11 @@ class IntelliventSkyDevice extends Homey.Device {
         const char = this._characteristics.deviceStatus;
         if (char) {
           try {
-            await char.unsubscribeFromNotifications();
+            await this._withTimeout(
+              char.unsubscribeFromNotifications(),
+              Constants.GATT_TIMEOUT,
+              'Unsubscribe',
+            );
           } catch (err) {
             this.log(`Error unsubscribing: ${err.message}`);
           }
@@ -625,16 +653,18 @@ class IntelliventSkyDevice extends Homey.Device {
         this._notificationsSubscribed = false;
       }
 
+      const peripheral = this._peripheral;
       try {
-        await this._peripheral.disconnect();
+        await this._withTimeout(peripheral.disconnect(), Constants.GATT_TIMEOUT, 'BLE disconnect');
         this.log('Disconnected from device');
       } catch (err) {
         this.log(`Error disconnecting: ${err.message}`);
       }
-      this._peripheral = null;
-      this._characteristics = {};
-      this._isConnected = false;
+      this._resetConnectionState();
       this._intentionalDisconnect = false;
+    } else {
+      // Nothing connected, but a connect may still be in flight
+      this._connectGen += 1;
     }
   }
 
@@ -679,7 +709,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._lastAuthRetry = 0;
 
     onProgress(t('progress_disconnect'));
-    await this._disconnect(true).catch(() => {});
+    await this._disconnect().catch(() => {});
 
     onProgress(t('progress_scan'));
     this._forceRescan = true;
@@ -699,14 +729,28 @@ class IntelliventSkyDevice extends Homey.Device {
       throw this._userError(t('error_no_status_characteristic'));
     }
 
-    const sensorData = Parser.parseSensorData(await char.read());
+    let sensorData = Parser.parseSensorData(await this._gattRead(char, 'Status'));
     await this._queueCapabilityUpdate(sensorData);
 
+    // The connect only fetches a code when none is stored, so a stored but
+    // stale code survives it. Ask the fan directly - it hands out the current
+    // code while in pairing mode - past the cooldown, since the user asked.
+    if (!sensorData.authenticated) {
+      onProgress(t('progress_auth'));
+      this._lastAuthRegenTime = 0;
+      await this._refreshAuthentication();
+      sensorData = Parser.parseSensorData(await this._gattRead(char, 'Status'));
+      await this._queueCapabilityUpdate(sensorData);
+    }
+
+    // Report what the fan says, not whether a code is stored: a stored code
+    // the fan does not accept is not control
+    const { authenticated } = sensorData;
     const readOnly = this._isReadOnly();
-    this.log(`Repair complete: authenticated=${sensorData.authenticated} readOnly=${readOnly}`);
+    this.log(`Repair complete: authenticated=${authenticated} readOnly=${readOnly}`);
 
     return {
-      authenticated: !readOnly,
+      authenticated,
       readOnly,
       readings: t('result_readings', {
         rpm: String(sensorData.rpm),
@@ -721,8 +765,9 @@ class IntelliventSkyDevice extends Homey.Device {
    * lock - everything in here needs exclusive use of the radio.
    * @param {string} uuid - Peripheral uuid stored at pairing time
    * @param {string} [address] - MAC address stored at pairing time
+   * @param {number} gen - This attempt's connect generation
    */
-  async _connectAndDiscover(uuid, address) {
+  async _connectAndDiscover(uuid, address, gen) {
     // After repeated failures, stop trusting Homey's advertisement cache: a
     // cached entry can outlive the peripheral and every connect against it
     // fails the same way, indefinitely, even once the fan is back in range
@@ -738,25 +783,27 @@ class IntelliventSkyDevice extends Homey.Device {
       throw new Error('Device not found');
     }
 
-    this._peripheral = await advertisement.connect();
-    this.log('Connected to device');
+    const peripheral = await advertisement.connect();
 
-    if (this._isDeleted) {
-      // Deleted while the connect was pending - don't leave a live connection
-      throw new Error('Device has been deleted');
+    if (this._isDeleted || gen !== this._connectGen) {
+      // Deleted, timed out or superseded while connect() was pending. This
+      // link belongs to nobody now: release it instead of overwriting the
+      // device's current connection, and never leave it holding the fan's
+      // only BLE slot.
+      await this._withTimeout(peripheral.disconnect(), Constants.GATT_TIMEOUT, 'BLE disconnect')
+        .catch(() => {});
+      throw new Error(this._isDeleted ? 'Device has been deleted' : 'Connection attempt abandoned');
     }
+
+    this._peripheral = peripheral;
+    this.log('Connected to device');
 
     // Set up disconnect handler. Capture the peripheral: a late event from
     // an already-torn-down peripheral must not null out a newer connection.
-    const peripheral = this._peripheral;
     peripheral.once('disconnect', () => {
       if (this._peripheral !== peripheral) return;
 
-      this._isConnected = false;
-      this._peripheral = null;
-      this._characteristics = {};
-      this._notificationsSubscribed = false;
-      this._deviceConfig = {};
+      this._resetConnectionState();
 
       if (this._isDeleted) return;
 
@@ -775,7 +822,7 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // Discover services and characteristics. The fans are slow here
     // (~16 s observed); nothing else may touch the radio meanwhile.
-    await this._discoverServices();
+    await this._discoverServices(gen);
   }
 
   /**
@@ -792,7 +839,11 @@ class IntelliventSkyDevice extends Homey.Device {
     let timer = null;
     const timeout = new Promise((resolve, reject) => {
       timer = this.homey.setTimeout(
-        () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+        () => {
+          const err = new Error(`${label} timed out after ${Math.round(ms / 1000)}s`);
+          err.timedOut = true;
+          reject(err);
+        },
         ms,
       );
     });
@@ -800,6 +851,50 @@ class IntelliventSkyDevice extends Homey.Device {
     return Promise.race([promise, timeout]).finally(() => {
       if (timer) this.homey.clearTimeout(timer);
     });
+  }
+
+  /**
+   * Read a characteristic, time-boxed (see GATT_TIMEOUT). A read that times
+   * out is flagged as a lost link so the caller's retry path reconnects.
+   * @param {BleCharacteristic} char - Characteristic to read
+   * @param {string} label - Name used in errors
+   * @returns {Promise<Buffer>}
+   */
+  async _gattRead(char, label) {
+    try {
+      return await this._withTimeout(char.read(), Constants.GATT_TIMEOUT, `${label} read`);
+    } catch (err) {
+      if (err.timedOut) err.connectionLost = true;
+      throw err;
+    }
+  }
+
+  /**
+   * Write a characteristic, time-boxed (see GATT_TIMEOUT)
+   * @param {BleCharacteristic} char - Characteristic to write
+   * @param {Buffer} data - Payload
+   * @param {string} label - Name used in errors
+   */
+  async _gattWrite(char, data, label) {
+    try {
+      await this._withTimeout(char.write(data), Constants.GATT_TIMEOUT, `${label} write`);
+    } catch (err) {
+      if (err.timedOut) err.connectionLost = true;
+      throw err;
+    }
+  }
+
+  /**
+   * Whether an error means the link is gone and must be rebuilt, as opposed
+   * to a command the fan refused on a healthy link
+   * @param {Error} err - The error
+   * @returns {boolean}
+   */
+  _isConnectionError(err) {
+    if (!this._isConnected || (err && err.connectionLost)) return true;
+    // Homey's wording varies by firmware ('Not connected', 'Peripheral
+    // disconnected', ...), so match loosely and case-insensitively
+    return /not connected|disconnected/i.test(String(err && err.message));
   }
 
   /**
@@ -816,19 +911,23 @@ class IntelliventSkyDevice extends Homey.Device {
    *    which is why it looped forever.
    *  - Stop as soon as the characteristics this driver actually uses are
    *    present, rather than insisting the full walk completes.
+   *
+   * @param {number} gen - Connect generation this discovery belongs to
    */
-  async _discoverServices() {
+  async _discoverServices(gen) {
     const attempts = Constants.SERVICE_DISCOVERY_ATTEMPTS;
     let lastError = null;
 
     for (let attempt = 1; attempt <= attempts; attempt++) {
+      this._assertCurrentAttempt(gen);
       if (!this._peripheral || this._peripheral.isConnected === false) {
         throw lastError || new Error('Device disconnected during service discovery');
       }
 
       try {
         this.log(`Discovering services and characteristics (attempt ${attempt}/${attempts})...`);
-        await this._discoverServicesOnce();
+        await this._discoverServicesOnce(gen);
+        this._assertCurrentAttempt(gen);
         await this._cacheCharacteristics();
         this.log(`Service discovery complete (${(this._peripheral.services || []).length} services)`);
         return;
@@ -839,6 +938,7 @@ class IntelliventSkyDevice extends Homey.Device {
 
       // Partial results are still usable: the SDK timing out does not mean
       // nothing resolved. Check before spending another window.
+      this._assertCurrentAttempt(gen);
       await this._cacheCharacteristics();
       if (this._hasRequiredCharacteristics()) {
         this.log('Required characteristics resolved despite the timeout, continuing');
@@ -850,12 +950,24 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Throw when a connect attempt has been abandoned (timed out, torn down,
+   * superseded). Its discovery must not touch a newer connection.
+   * @param {number} gen - The attempt's connect generation
+   */
+  _assertCurrentAttempt(gen) {
+    if (gen !== this._connectGen) {
+      throw new Error('Connection attempt abandoned');
+    }
+  }
+
+  /**
    * One discovery pass. Staged where the SDK allows it: fetching the service
    * handles is cheap, and discovering characteristics per service gives each
    * service its own timeout window instead of forcing the whole ~16 s walk
    * into a single 10 s budget.
+   * @param {number} gen - Connect generation this pass belongs to
    */
-  async _discoverServicesOnce() {
+  async _discoverServicesOnce(gen) {
     if (typeof this._peripheral.discoverServices !== 'function') {
       await this._peripheral.discoverAllServicesAndCharacteristics();
       return;
@@ -865,6 +977,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this.log(`Found ${(services || []).length} services, discovering characteristics...`);
 
     for (const service of services || []) {
+      this._assertCurrentAttempt(gen);
       if (!this._peripheral || this._peripheral.isConnected === false) {
         throw new Error('Device disconnected during service discovery');
       }
@@ -966,36 +1079,63 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * While the device is read-only, keep watching for a real auth code.
+   * While the device is read-only, or the fan reports this session as
+   * unauthenticated, keep watching for a new auth code.
    *
    * The code is only readable while the fan is in pairing mode, and this
    * app holds a persistent connection - so a fan put into pairing mode after
-   * the app connected would otherwise stay read-only until someone restarted
-   * the app, with every write silently rejected in the meantime. Retrying on
-   * the live connection closes that gap.
+   * the app connected would otherwise stay read-only (or stuck on a stale
+   * code) until someone restarted the app, with every write silently
+   * rejected in the meantime. Retrying on the live connection closes that gap.
    *
    * Must be called inside _withConnection().
    */
-  async _retryAuthIfReadOnly() {
-    if (this._isDeleted || !this._isReadOnly()) return;
+  async _retryAuthIfNeeded() {
+    if (this._isDeleted) return;
+    if (!this._isReadOnly() && this._lastAuthenticated !== false) return;
 
     const now = Date.now();
     if (now - this._lastAuthRetry < Constants.AUTH_RETRY_INTERVAL) return;
     this._lastAuthRetry = now;
 
+    // Only act on a code that differs from the stored one: re-writing a
+    // stale code every minute changes nothing on the fan
+    if (await this._refreshAuthentication({ onlyIfChanged: true })) {
+      this.log('Fan was in pairing mode - auth code picked up, control enabled');
+      await this.unsetWarning().catch(this.error);
+    }
+  }
+
+  /**
+   * Read the auth code from the fan and authenticate this session with it.
+   * A stored code can be well-formed yet stale (fan reset or re-paired): the
+   * fan then accepts the auth write but reports the session unauthenticated,
+   * and only a fresh read - possible while the fan is in pairing mode - fixes
+   * that.
+   * @param {object} [options]
+   * @param {boolean} [options.onlyIfChanged] - Skip the write when the fan
+   *   did not hand out a different code than the one already stored
+   * @returns {Promise<boolean>} - True when an auth write went through
+   */
+  async _refreshAuthentication({ onlyIfChanged = false } = {}) {
+    const before = this.getSetting('auth_code');
     await this._fetchAndStoreAuthCode();
 
     const authCode = this.getSetting('auth_code');
-    if (!authCode || authCode === '00000000') return;
+    if (!authCode || authCode === '00000000') return false;
+    if (onlyIfChanged && authCode === before) return false;
 
     // A stored code is not enough: this session must also be authenticated
     // with it, otherwise the fan keeps ignoring every command
     try {
       await this._writeAuthCode(authCode);
-      this.log('Fan was in pairing mode - auth code picked up, control enabled');
-      await this.unsetWarning().catch(this.error);
+      // Unknown until the fan reports again - the 'false' from before this
+      // write must not keep blocking commands
+      this._lastAuthenticated = null;
+      return true;
     } catch (err) {
       this.error(`Picked up an auth code but could not authenticate: ${err.message}`);
+      return false;
     }
   }
 
@@ -1011,7 +1151,7 @@ class IntelliventSkyDevice extends Homey.Device {
       throw new Error('AUTH characteristic not found');
     }
     const authBuffer = Parser.encodeAuthCode(authCode);
-    await char.write(authBuffer);
+    await this._gattWrite(char, authBuffer, 'Auth');
     this.log('Authentication successful');
   }
 
@@ -1041,7 +1181,7 @@ class IntelliventSkyDevice extends Homey.Device {
     try {
       const char = this._characteristics.auth;
       if (char) {
-        const data = await char.read();
+        const data = await this._gattRead(char, 'Auth');
         const authCode = Parser.parseAuthCode(data);
 
         if (!authCode) return;
@@ -1127,7 +1267,7 @@ class IntelliventSkyDevice extends Homey.Device {
         }
 
         // If connection issue, try to reconnect
-        if (!this._isConnected || err.message.includes('not connected') || err.message.includes('disconnected')) {
+        if (this._isConnectionError(err)) {
           await this._teardownConnection();
 
           if (attempt < retries) {
@@ -1174,7 +1314,19 @@ class IntelliventSkyDevice extends Homey.Device {
           return;
         }
 
-        const data = await char.read();
+        let data;
+        try {
+          data = await this._gattRead(char, 'Status');
+        } catch (err) {
+          // This read is the connection heartbeat. When it fails, the link is
+          // presumed dead whatever the error says: a link that dropped
+          // without a disconnect event (sdk-issues#315) still looks
+          // connected, and without a teardown every later poll would fail
+          // against the same dead peripheral - with no reconnect scheduled,
+          // because the device still counts as connected.
+          err.connectionLost = true;
+          throw err;
+        }
         const sensorData = Parser.parseSensorData(data);
 
         this.log(`Sensor data: ${JSON.stringify(sensorData)}`);
@@ -1184,7 +1336,7 @@ class IntelliventSkyDevice extends Homey.Device {
 
         // Cheap piggyback on the poll: pick up an auth code if the fan has
         // since been put into pairing mode
-        await this._retryAuthIfReadOnly();
+        await this._retryAuthIfNeeded();
       }, 0);
     } catch (err) {
       this.error(`Failed to fetch sensor data: ${err.message}`);
@@ -1269,6 +1421,8 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // Device is available
     await this.setAvailable().catch(this.error);
+
+    this._lastAuthenticated = sensorData.authenticated;
 
     // Surface unauthenticated state: the fan silently ignores writes when not
     // authenticated, which would otherwise look like working control. The
@@ -1556,14 +1710,14 @@ class IntelliventSkyDevice extends Homey.Device {
     const char = this._characteristics.constantSpeed;
     if (!char) throw new Error('Constant speed characteristic not found');
     const data = Parser.encodeConstantSpeed(enabled, rpm);
-    await char.write(data);
+    await this._gattWrite(char, data, 'Constant speed');
   }
 
   async _setHumidity(enabled, detection, rpm) {
     const char = this._characteristics.humidity;
     if (!char) throw new Error('Humidity characteristic not found');
     const data = Parser.encodeHumidity(enabled, detection, rpm);
-    await char.write(data);
+    await this._gattWrite(char, data, 'Humidity');
     // The write succeeded - the device now holds this value
     this._deviceConfig.humidityRpm = Parser.validateRpm(rpm);
   }
@@ -1572,7 +1726,7 @@ class IntelliventSkyDevice extends Homey.Device {
     const char = this._characteristics.lightVoc;
     if (!char) throw new Error('Light/VOC characteristic not found');
     const data = Parser.encodeLightVoc(lightEnabled, lightDetection, vocEnabled, vocDetection);
-    await char.write(data);
+    await this._gattWrite(char, data, 'Light/VOC');
     // The write succeeded - the device now holds these values
     this._deviceConfig.lightEnabled = Boolean(lightEnabled);
     this._deviceConfig.lightDetectionRaw = Parser.validateDetection(lightDetection);
@@ -1584,28 +1738,28 @@ class IntelliventSkyDevice extends Homey.Device {
     const char = this._characteristics.timer;
     if (!char) throw new Error('Timer characteristic not found');
     const data = Parser.encodeTimer(duration, delayEnabled, delayMinutes, rpm);
-    await char.write(data);
+    await this._gattWrite(char, data, 'Timer');
   }
 
   async _setAiring(enabled, minutes, rpm) {
     const char = this._characteristics.airing;
     if (!char) throw new Error('Airing characteristic not found');
     const data = Parser.encodeAiring(enabled, minutes, rpm);
-    await char.write(data);
+    await this._gattWrite(char, data, 'Airing');
   }
 
   async _setPause(enabled, duration) {
     const char = this._characteristics.pause;
     if (!char) throw new Error('Pause characteristic not found');
     const data = Parser.encodePause(enabled, duration);
-    await char.write(data);
+    await this._gattWrite(char, data, 'Pause');
   }
 
   async _setBoost(enabled, rpm, duration) {
     const char = this._characteristics.boost;
     if (!char) throw new Error('Boost characteristic not found');
     const data = Parser.encodeBoost(enabled, rpm, duration);
-    await char.write(data);
+    await this._gattWrite(char, data, 'Boost');
   }
 
   async _setTemporarySpeed(rpm) {
@@ -1613,7 +1767,7 @@ class IntelliventSkyDevice extends Homey.Device {
       const char = this._characteristics.temporarySpeed;
       if (!char) throw new Error('Temporary speed characteristic not found');
       const data = Parser.encodeTemporarySpeed(rpm);
-      await char.write(data);
+      await this._gattWrite(char, data, 'Temporary speed');
     });
   }
 
@@ -1663,7 +1817,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._cancelScheduledReconnect();
     this._isDeleted = true; // gates reconnects scheduled from the disconnect handler
 
-    await this._disconnect(true).catch((err) => this.error(`Teardown failed: ${err.message}`));
+    await this._disconnect().catch((err) => this.error(`Teardown failed: ${err.message}`));
   }
 
   /**
@@ -1683,7 +1837,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._cancelScheduledReconnect();
 
     // Disconnect (also unsubscribes from notifications)
-    await this._disconnect(true);
+    await this._disconnect();
   }
 
 }
