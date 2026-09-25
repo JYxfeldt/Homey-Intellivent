@@ -34,6 +34,14 @@ class IntelliventSkyDevice extends Homey.Device {
     // The fan's own 'authenticated' flag from its last status report. null
     // means unknown (no report since the session was (re)authenticated).
     this._lastAuthenticated = null;
+    // When the current connection was established (0 = not connected), used
+    // to tell a stable link from one that keeps dropping right away
+    this._connectedAt = 0;
+    // Last warning/unavailable reason applied, so the poll only calls the
+    // Homey API when something actually changed (undefined = not yet applied)
+    this._warningKey = undefined;
+    this._unavailableKey = undefined;
+    this._lastSensorLog = null;
 
     // Device-held configuration cached per connection (readback + own
     // writes), used to rebuild shared payloads without clobbering values set
@@ -51,15 +59,11 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // Ensure new capabilities exist on already-paired devices
     await this._migrateCapabilities();
+    await this._migrateAuthCode();
 
-    // Surface device info captured during pairing into the settings labels
-    const store = this.getStore();
-    const infoSettings = {};
-    if (store.firmwareVersion) infoSettings.firmware_version = store.firmwareVersion;
-    if (store.hardwareVersion) infoSettings.hardware_version = store.hardwareVersion;
-    if (Object.keys(infoSettings).length > 0) {
-      await this.setSettings(infoSettings).catch(this.error);
-    }
+    // humidity_changed fires relative to this reading. Seeded from the stored
+    // value so an app restart does not fire it for an unchanged reading.
+    this._humidityTriggerBaseline = this.getCapabilityValue('measure_humidity');
 
     // Register capability listeners
     this._registerCapabilityListeners();
@@ -77,8 +81,54 @@ class IntelliventSkyDevice extends Homey.Device {
    * @returns {boolean} - True if read-only
    */
   _isReadOnly() {
-    const authCode = this.getSetting('auth_code');
-    return authCode === '00000000';
+    return this._getAuthCode() === '00000000';
+  }
+
+  /**
+   * The fan's auth code. Kept in the device store; the settings page only
+   * shows a masked version, so the code is not on display to everyone with
+   * access to the device.
+   * @returns {string|undefined}
+   */
+  _getAuthCode() {
+    return this.getStoreValue('authCode') ?? this.getSetting('auth_code');
+  }
+
+  /**
+   * Store the fan's auth code and show its masked form in settings
+   * @param {string} authCode - 8 hex characters
+   */
+  async _setAuthCode(authCode) {
+    await this.setStoreValue('authCode', authCode);
+    await this.setSettings({ auth_code: IntelliventSkyDevice._maskAuthCode(authCode) })
+      .catch(this.error);
+  }
+
+  /**
+   * The settings label for an auth code. The read-only marker stays visible
+   * because the setting's hint explains what it means.
+   * @param {string} authCode - Auth code
+   * @returns {string}
+   */
+  static _maskAuthCode(authCode) {
+    if (!authCode) return '';
+    return authCode === '00000000' ? authCode : '••••••••';
+  }
+
+  /**
+   * Devices paired before 0.4.7 kept the plain auth code in settings. Move it
+   * to the store once and mask the setting.
+   */
+  async _migrateAuthCode() {
+    if (this.getStoreValue('authCode') !== undefined && this.getStoreValue('authCode') !== null) return;
+    const legacy = this.getSetting('auth_code');
+    if (typeof legacy !== 'string' || !/^[0-9a-f]{8}$/i.test(legacy)) return;
+    try {
+      await this._setAuthCode(legacy.toLowerCase());
+    } catch (err) {
+      // Nothing lost: _getAuthCode() still falls back to the setting
+      this.error(`Could not migrate auth code: ${err.message}`);
+    }
   }
 
   /**
@@ -121,6 +171,9 @@ class IntelliventSkyDevice extends Homey.Device {
       if (err && err.userFacing) throw err;
 
       this.error('Command failed:', err && err.message);
+      if (err && err.commandTimeout) {
+        throw this._userError(this.homey.__('errors.command_timeout'));
+      }
       if (err && err.rateLimited) {
         throw this._userError(this.homey.__('errors.rate_limited', {
           seconds: String(err.retryAfterSeconds),
@@ -346,6 +399,27 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
+   * Whether the current connection has lasted long enough to count as a
+   * healthy link rather than one that keeps dropping
+   * @returns {boolean}
+   */
+  _isStableConnection() {
+    return this._isConnected
+      && this._connectedAt > 0
+      && Date.now() - this._connectedAt >= Constants.STABLE_CONNECTION_TIME;
+  }
+
+  /**
+   * Called after each successful poll: once the link has been up for
+   * STABLE_CONNECTION_TIME, forget every accumulated penalty, so the next
+   * isolated blip retries in 5 s rather than resuming a long backoff.
+   */
+  _noteStableConnection() {
+    if (this._reconnectAttempts === 0 && this._connectionFailures.length === 0) return;
+    if (this._isStableConnection()) this._resetBackoff();
+  }
+
+  /**
    * Check if connection is rate limited
    * @throws {Error} - If rate limited
    */
@@ -439,6 +513,12 @@ class IntelliventSkyDevice extends Homey.Device {
       // Cache characteristics
       await this._cacheCharacteristics();
 
+      // Without the status characteristic the device would sit "connected"
+      // with no readings, and never be marked unavailable
+      if (!this._hasRequiredCharacteristics()) {
+        throw new Error('Device status characteristic not found');
+      }
+
       // Authenticate if we have an auth code
       await this._authenticate();
 
@@ -456,10 +536,14 @@ class IntelliventSkyDevice extends Homey.Device {
       }
 
       this._isConnected = true;
+      this._connectedAt = Date.now();
 
-      // Back to a healthy link: forget every accumulated penalty, so the next
-      // isolated blip retries in 5 s rather than resuming a 5 minute backoff
-      this._resetBackoff();
+      // Connected again. The reconnect backoff is only forgotten once the
+      // link has proven stable (see _noteStableConnection) - a fan that
+      // connects and drops straight away must keep backing off.
+      this._consecutiveConnectFailures = 0;
+      this._extendedCooldownUntil = 0;
+      this._cancelScheduledReconnect();
 
       return this._peripheral;
     } catch (err) {
@@ -546,6 +630,38 @@ class IntelliventSkyDevice extends Homey.Device {
     } catch (err) {
       this.log(`Constant speed config readback failed (non-fatal): ${err.message}`);
     }
+
+    try {
+      await this._syncDeviceInfo();
+    } catch (err) {
+      this.log(`Device info readback failed (non-fatal): ${err.message}`);
+    }
+  }
+
+  /**
+   * Read firmware and hardware version from the standard Device Information
+   * service into the settings labels, which otherwise only ever said
+   * "Unknown". Written only when a value changed.
+   */
+  async _syncDeviceInfo() {
+    const fields = [
+      { key: 'firmwareVersion', setting: 'firmware_version', label: 'Firmware version' },
+      { key: 'hardwareVersion', setting: 'hardware_version', label: 'Hardware version' },
+    ];
+    const changed = {};
+    for (const { key, setting, label } of fields) {
+      const char = this._characteristics[key];
+      if (!char) continue;
+      const value = Parser.parseString(await this._gattRead(char, label));
+      if (value && value !== this.getSetting(setting)) {
+        changed[setting] = value;
+        await this.setStoreValue(key, value).catch(this.error);
+      }
+    }
+    if (Object.keys(changed).length > 0) {
+      this.log(`Device info: ${JSON.stringify(changed)}`);
+      await this.setSettings(changed).catch(this.error);
+    }
   }
 
   /**
@@ -592,6 +708,7 @@ class IntelliventSkyDevice extends Homey.Device {
   _resetConnectionState() {
     this._connectGen += 1;
     this._isConnected = false;
+    this._connectedAt = 0;
     this._peripheral = null;
     this._characteristics = {};
     this._notificationsSubscribed = false;
@@ -803,6 +920,7 @@ class IntelliventSkyDevice extends Homey.Device {
     peripheral.once('disconnect', () => {
       if (this._peripheral !== peripheral) return;
 
+      const wasStable = this._isStableConnection();
       this._resetConnectionState();
 
       if (this._isDeleted) return;
@@ -812,11 +930,17 @@ class IntelliventSkyDevice extends Homey.Device {
       if (this._intentionalDisconnect) return;
 
       // Notifications (if any) died with the connection. Reconnect promptly
-      // instead of leaving up to a full POLL_INTERVAL of blindness. This was
-      // a clean drop rather than a failed attempt, so retry from the shortest
-      // delay instead of inheriting an old backoff.
-      this.log('Device disconnected unexpectedly, scheduling reconnect');
-      this._reconnectAttempts = 0;
+      // instead of leaving up to a full POLL_INTERVAL of blindness. A drop
+      // after a stable connection retries from the shortest delay; a link
+      // that dropped soon after connecting keeps its backoff (and counts
+      // towards the rate limiter), so a flapping fan cannot turn into a scan
+      // every few seconds.
+      this.log(`Device disconnected unexpectedly (${wasStable ? 'stable' : 'short-lived'} link), scheduling reconnect`);
+      if (wasStable) {
+        this._reconnectAttempts = 0;
+      } else {
+        this._recordConnectionFailure();
+      }
       this._scheduleReconnect();
     });
 
@@ -1017,6 +1141,8 @@ class IntelliventSkyDevice extends Homey.Device {
       { key: 'pause', uuid: Constants.PAUSE },
       { key: 'boost', uuid: Constants.BOOST },
       { key: 'temporarySpeed', uuid: Constants.TEMPORARY_SPEED },
+      { key: 'firmwareVersion', uuid: Constants.FIRMWARE_VERSION },
+      { key: 'hardwareVersion', uuid: Constants.HARDWARE_VERSION },
     ];
 
     // Called after partial discovery too, so nothing here may assume the GATT
@@ -1025,10 +1151,9 @@ class IntelliventSkyDevice extends Homey.Device {
 
     for (const service of this._peripheral.services || []) {
       for (const characteristic of service.characteristics || []) {
-        const uuid = characteristic.uuid.toLowerCase().replace(/-/g, '');
-
         for (const charDef of charUuids) {
-          if (uuid === charDef.uuid.toLowerCase().replace(/-/g, '')) {
+          // Standard characteristics may be reported in 16-bit short form
+          if (Parser.uuidMatches(characteristic.uuid, charDef.uuid)) {
             this._characteristics[charDef.key] = characteristic;
           }
         }
@@ -1045,7 +1170,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * silently ignores every command until the next reconnect.
    */
   async _authenticate() {
-    let authCode = this.getSetting('auth_code');
+    let authCode = this._getAuthCode();
 
     if (!authCode || authCode === '00000000') {
       // No code yet, or only the not-in-pairing-mode marker: try to fetch.
@@ -1054,7 +1179,7 @@ class IntelliventSkyDevice extends Homey.Device {
       // it reconnect picks up a real code without re-pairing.
       this.log('No usable auth code stored, attempting to fetch...');
       await this._fetchAndStoreAuthCode();
-      authCode = this.getSetting('auth_code');
+      authCode = this._getAuthCode();
       if (!authCode || authCode === '00000000') return;
     }
 
@@ -1065,7 +1190,7 @@ class IntelliventSkyDevice extends Homey.Device {
       // Try to fetch a new auth code, and if that produces a different
       // usable one, authenticate this session with it
       await this._fetchAndStoreAuthCode();
-      const refreshed = this.getSetting('auth_code');
+      const refreshed = this._getAuthCode();
       if (refreshed && refreshed !== '00000000' && refreshed !== authCode) {
         await this._writeAuthCode(refreshed);
         return;
@@ -1101,8 +1226,8 @@ class IntelliventSkyDevice extends Homey.Device {
     // Only act on a code that differs from the stored one: re-writing a
     // stale code every minute changes nothing on the fan
     if (await this._refreshAuthentication({ onlyIfChanged: true })) {
+      // The warning follows the fan's next status report
       this.log('Fan was in pairing mode - auth code picked up, control enabled');
-      await this.unsetWarning().catch(this.error);
     }
   }
 
@@ -1118,10 +1243,10 @@ class IntelliventSkyDevice extends Homey.Device {
    * @returns {Promise<boolean>} - True when an auth write went through
    */
   async _refreshAuthentication({ onlyIfChanged = false } = {}) {
-    const before = this.getSetting('auth_code');
+    const before = this._getAuthCode();
     await this._fetchAndStoreAuthCode();
 
-    const authCode = this.getSetting('auth_code');
+    const authCode = this._getAuthCode();
     if (!authCode || authCode === '00000000') return false;
     if (onlyIfChanged && authCode === before) return false;
 
@@ -1190,7 +1315,7 @@ class IntelliventSkyDevice extends Homey.Device {
         // (pyfreshintellivent: "Fan was not in pairing mode"). Never let that
         // overwrite a previously stored real code - a transient auth failure
         // would otherwise permanently lock the device into read-only mode.
-        const existingCode = this.getSetting('auth_code');
+        const existingCode = this._getAuthCode();
         if (authCode === '00000000' && existingCode && existingCode !== '00000000') {
           this.log('Fan not in pairing mode; keeping stored auth code');
           return;
@@ -1201,7 +1326,7 @@ class IntelliventSkyDevice extends Homey.Device {
         // would churn settings (and the timeline) for no reason.
         if (authCode === existingCode) return;
 
-        await this.setSettings({ auth_code: authCode });
+        await this._setAuthCode(authCode);
         // Only a REAL code arms the regeneration cooldown. Storing the
         // 00000000 marker must not: it would block the pairing-mode recovery
         // path for the whole cooldown window right when the user is trying
@@ -1221,38 +1346,72 @@ class IntelliventSkyDevice extends Homey.Device {
    * The connection is persistent (no idle timeout) and stays open until
    * an unexpected disconnect, device deletion, or explicit disconnect call.
    * @param {Function} operation - The operation to execute
-   * @param {number} [retries] - Extra attempts after the first. Defaults to
-   *   MAX_RECONNECT_ATTEMPTS for user-initiated commands; the background poll
-   *   passes 0 and leaves retrying to the reconnect scheduler.
+   * @param {object} [options]
+   * @param {number} [options.retries] - Extra attempts after the first.
+   *   Defaults to MAX_RECONNECT_ATTEMPTS for user-initiated commands; the
+   *   background poll passes 0 and leaves retrying to the reconnect scheduler.
+   * @param {number} [options.timeout] - Total time the caller waits, queueing
+   *   and reconnecting included (USER_COMMAND_TIMEOUT by default, 0 for
+   *   none). Past it the caller gets an error, and an operation that has not
+   *   started yet is dropped instead of running late.
    * @returns {*} - Result of the operation
    */
-  async _withConnection(operation, retries = Constants.MAX_RECONNECT_ATTEMPTS) {
+  async _withConnection(operation, {
+    retries = Constants.MAX_RECONNECT_ATTEMPTS,
+    timeout = Constants.USER_COMMAND_TIMEOUT,
+  } = {}) {
+    const deadline = timeout > 0 ? Date.now() + timeout : null;
+
     // Queue operations to prevent concurrent BLE access. The stored queue tail
     // must never be a rejected promise: chaining .then() on a rejection would
     // skip every subsequent operation and replay the stale error forever.
     // Errors are delivered to the caller via `run`; the tail swallows them.
     const run = this._operationQueue
       .catch(() => {}) // previous operation's error was already delivered to its caller
-      .then(() => this._executeWithRetry(operation, retries));
+      .then(() => this._executeWithRetry(operation, retries, deadline));
     this._operationQueue = run.catch(() => {});
-    return run;
+    if (!deadline) return run;
+
+    try {
+      return await this._withTimeout(run, timeout, 'Command');
+    } catch (err) {
+      if (err.timedOut) err.commandTimeout = true;
+      throw err;
+    }
+  }
+
+  /**
+   * The error for a command whose caller has given up
+   * @returns {Error}
+   */
+  static _commandExpired() {
+    const err = new Error('Command expired before it could run');
+    err.commandTimeout = true;
+    return err;
   }
 
   /**
    * Run one BLE operation, reconnecting on connection errors.
    * @param {Function} operation - The operation to execute
    * @param {number} retries - Extra attempts after the first
+   * @param {number|null} [deadline] - Timestamp after which the caller has
+   *   given up; the operation is then not started
    * @returns {*} - Result of the operation
    */
-  async _executeWithRetry(operation, retries = Constants.MAX_RECONNECT_ATTEMPTS) {
+  async _executeWithRetry(operation, retries = Constants.MAX_RECONNECT_ATTEMPTS, deadline = null) {
     let lastError = null;
+    const expired = () => deadline !== null && Date.now() >= deadline;
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       if (this._isDeleted) {
         throw new Error('Device has been deleted');
       }
+      if (expired()) throw IntelliventSkyDevice._commandExpired();
       try {
         await this._connect();
+        // The connect may have taken long enough that the caller gave up.
+        // Keep the connection (the poll uses it), but don't run the command.
+        if (expired()) throw IntelliventSkyDevice._commandExpired();
         const result = await operation();
         return result;
       } catch (err) {
@@ -1262,7 +1421,7 @@ class IntelliventSkyDevice extends Homey.Device {
         // Rate limiting is a deliberate back-off, not a transient fault.
         // Retrying burns the whole attempt budget inside the cooldown window
         // and turns one failure into four identical log lines.
-        if (err.rateLimited) {
+        if (err.rateLimited || err.commandTimeout) {
           throw err;
         }
 
@@ -1270,15 +1429,18 @@ class IntelliventSkyDevice extends Homey.Device {
         if (this._isConnectionError(err)) {
           await this._teardownConnection();
 
+          const delay = Math.min(
+            Constants.RECONNECT_DELAY * (2 ** attempt),
+            Constants.MAX_RECONNECT_DELAY,
+          );
+          // No point waiting past the caller's deadline
+          if (deadline !== null && Date.now() + delay >= deadline) break;
+
           if (attempt < retries) {
             // Exponential backoff. A fixed short delay turns a fan that is
             // briefly unreachable into a scan storm, and the scan churn from
             // several devices retrying in lockstep is itself enough to
             // destabilise Homey's BLE stack.
-            const delay = Math.min(
-              Constants.RECONNECT_DELAY * (2 ** attempt),
-              Constants.MAX_RECONNECT_DELAY,
-            );
             this.log(`Retrying in ${Math.round(delay / 1000)} seconds...`);
             await new Promise((resolve) => this.homey.setTimeout(resolve, delay));
           }
@@ -1310,8 +1472,11 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._withConnection(async () => {
         const char = this._characteristics.deviceStatus;
         if (!char) {
-          this.log('Device status characteristic not found');
-          return;
+          // _connect() refuses a connection without it, so this is a link
+          // that lost its GATT cache - rebuild it
+          const err = new Error('Device status characteristic not found');
+          err.connectionLost = true;
+          throw err;
         }
 
         let data;
@@ -1329,7 +1494,12 @@ class IntelliventSkyDevice extends Homey.Device {
         }
         const sensorData = Parser.parseSensorData(data);
 
-        this.log(`Sensor data: ${JSON.stringify(sensorData)}`);
+        // Logged on change only - every 20 s is a lot of identical lines
+        const summary = JSON.stringify(sensorData);
+        if (summary !== this._lastSensorLog) {
+          this._lastSensorLog = summary;
+          this.log(`Sensor data: ${summary}`);
+        }
 
         // Update capabilities
         await this._queueCapabilityUpdate(sensorData);
@@ -1337,7 +1507,9 @@ class IntelliventSkyDevice extends Homey.Device {
         // Cheap piggyback on the poll: pick up an auth code if the fan has
         // since been put into pairing mode
         await this._retryAuthIfNeeded();
-      }, 0);
+
+        this._noteStableConnection();
+      }, { retries: 0, timeout: 0 });
     } catch (err) {
       this.error(`Failed to fetch sensor data: ${err.message}`);
 
@@ -1347,7 +1519,10 @@ class IntelliventSkyDevice extends Homey.Device {
       const wedged = typeof this.homey.app.bleStackLooksWedged === 'function'
         && this.homey.app.bleStackLooksWedged();
       const reason = wedged ? 'errors.ble_unavailable' : 'errors.connection_failed';
-      this.setUnavailable(this.homey.__(reason)).catch(this.error);
+      if (reason !== this._unavailableKey || this.getAvailable()) {
+        this._unavailableKey = reason;
+        this.setUnavailable(this.homey.__(reason)).catch(this.error);
+      }
 
       // Keep trying, forever, at a decreasing rate. setAvailable() happens
       // again automatically on the first successful read.
@@ -1400,11 +1575,14 @@ class IntelliventSkyDevice extends Homey.Device {
 
     // Update humidity
     if (sensorData.humidity > 0) {
-      const currentHumidity = this.getCapabilityValue('measure_humidity');
       await this.setCapabilityValue('measure_humidity', sensorData.humidity).catch(this.error);
 
-      // Trigger humidity changed flow
-      if (currentHumidity !== sensorData.humidity) {
+      // Trigger humidity changed flow, on a meaningful change only
+      const baseline = this._humidityTriggerBaseline;
+      if (typeof baseline !== 'number') {
+        this._humidityTriggerBaseline = sensorData.humidity;
+      } else if (Math.abs(sensorData.humidity - baseline) >= Constants.HUMIDITY_TRIGGER_DELTA) {
+        this._humidityTriggerBaseline = sensorData.humidity;
         await this.homey.flow.getDeviceTriggerCard('humidity_changed')
           .trigger(this, { humidity: sensorData.humidity })
           .catch(this.error);
@@ -1414,25 +1592,46 @@ class IntelliventSkyDevice extends Homey.Device {
     // Check for mode change and trigger flow (compare against the value
     // captured before the capability was updated)
     if (sensorData.mode !== null && previousMode !== sensorData.mode) {
-      await this.homey.flow.getDeviceTriggerCard('mode_changed')
-        .trigger(this, { mode: sensorData.mode })
-        .catch(this.error);
+      await this._triggerModeChanged(sensorData.mode);
     }
 
     // Device is available
-    await this.setAvailable().catch(this.error);
+    if (!this.getAvailable()) {
+      await this.setAvailable().catch(this.error);
+    }
+    this._unavailableKey = undefined;
 
     this._lastAuthenticated = sensorData.authenticated;
 
     // Surface unauthenticated state: the fan silently ignores writes when not
     // authenticated, which would otherwise look like working control. The
     // read-only case (auth code 00000000) is the one that most needs a banner.
+    // Applied on change only.
+    let warningKey = null;
     if (!sensorData.authenticated) {
-      const key = this._isReadOnly() ? 'errors.read_only' : 'errors.not_authenticated';
-      await this.setWarning(this.homey.__(key)).catch(this.error);
-    } else {
-      await this.unsetWarning().catch(this.error);
+      warningKey = this._isReadOnly() ? 'errors.read_only' : 'errors.not_authenticated';
     }
+    if (warningKey !== this._warningKey) {
+      this._warningKey = warningKey;
+      if (warningKey) {
+        await this.setWarning(this.homey.__(warningKey)).catch(this.error);
+      } else {
+        await this.unsetWarning().catch(this.error);
+      }
+    }
+  }
+
+  /**
+   * Fire mode_changed. `mode` stays the stable id Flows can compare against;
+   * `mode_name` is the translated name for notifications and speech.
+   * @param {string} mode - Mode id
+   */
+  async _triggerModeChanged(mode) {
+    const key = `modes.${mode}`;
+    const name = this.homey.__(key);
+    await this.homey.flow.getDeviceTriggerCard('mode_changed')
+      .trigger(this, { mode, mode_name: name && name !== key ? name : mode })
+      .catch(this.error);
   }
 
   /**
@@ -1494,8 +1693,13 @@ class IntelliventSkyDevice extends Homey.Device {
 
       // Update capability and fire the mode_changed trigger for
       // Homey-originated changes (the device-report path won't see a change
-      // after this optimistic update)
-      await this._setModeCapability(mode);
+      // after this optimistic update). Only for modes the fan then actually
+      // reports: humidity/light/VOC/airing writes enable a feature, and the
+      // fan decides when it runs - showing them straight away made the mode
+      // flip back on the next report and fire mode_changed twice.
+      if (IntelliventSkyDevice.OPTIMISTIC_MODES.includes(mode)) {
+        await this._setModeCapability(mode);
+      }
     } catch (err) {
       this.error(`Failed to set mode: ${err.message}`);
       throw err;
@@ -1508,11 +1712,9 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   async _setModeCapability(mode) {
     const previous = this.getCapabilityValue('intellivent_mode');
-    await this.setCapabilityValue('intellivent_mode', mode);
+    await this.setCapabilityValue('intellivent_mode', mode).catch(this.error);
     if (previous !== mode) {
-      await this.homey.flow.getDeviceTriggerCard('mode_changed')
-        .trigger(this, { mode })
-        .catch(this.error);
+      await this._triggerModeChanged(mode);
     }
   }
 
@@ -1558,7 +1760,7 @@ class IntelliventSkyDevice extends Homey.Device {
   async setRpm(rpm) {
     this._checkWriteAccess();
     await this._setTemporarySpeed(rpm);
-    await this.setCapabilityValue('intellivent_rpm', rpm);
+    await this.setCapabilityValue('intellivent_rpm', rpm).catch(this.error);
   }
 
   /**
@@ -1586,14 +1788,11 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setHumidity(enabled, sensitivity, rpm);
     });
 
-    // Update capabilities
-    await this.setCapabilityValue('intellivent_humidity_enabled', enabled);
-    await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity));
-
-    // If enabled, update mode
-    if (enabled) {
-      await this._setModeCapability('humidity');
-    }
+    // Update capabilities. A failure here must not report the (successful)
+    // write as failed. The mode is left to the fan's next report - enabling
+    // humidity detection does not by itself put the fan in humidity mode.
+    await this.setCapabilityValue('intellivent_humidity_enabled', enabled).catch(this.error);
+    await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity)).catch(this.error);
 
     this.log(`Humidity detection configured: enabled=${enabled}, sensitivity=${sensitivity}, rpm=${rpm}`);
   }
@@ -1610,7 +1809,7 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setHumidity(enabled, sensitivity, this._humidityRpm());
     });
 
-    await this.setCapabilityValue('intellivent_humidity_enabled', enabled);
+    await this.setCapabilityValue('intellivent_humidity_enabled', enabled).catch(this.error);
 
     this.log(`Humidity detection ${enabled ? 'enabled' : 'disabled'}`);
   }
@@ -1627,7 +1826,7 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setHumidity(enabled, sensitivity, this._humidityRpm());
     });
 
-    await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity));
+    await this.setCapabilityValue('intellivent_humidity_sensitivity', String(sensitivity)).catch(this.error);
 
     this.log(`Humidity sensitivity set to ${sensitivity}`);
   }
@@ -1645,7 +1844,7 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
-    await this.setCapabilityValue('intellivent_light_enabled', enabled);
+    await this.setCapabilityValue('intellivent_light_enabled', enabled).catch(this.error);
 
     this.log(`Light detection ${enabled ? 'enabled' : 'disabled'}`);
   }
@@ -1663,7 +1862,7 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
-    await this.setCapabilityValue('intellivent_light_sensitivity', String(sensitivity));
+    await this.setCapabilityValue('intellivent_light_sensitivity', String(sensitivity)).catch(this.error);
 
     this.log(`Light sensitivity set to ${sensitivity}`);
   }
@@ -1681,7 +1880,7 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
-    await this.setCapabilityValue('intellivent_voc_enabled', enabled);
+    await this.setCapabilityValue('intellivent_voc_enabled', enabled).catch(this.error);
 
     this.log(`VOC detection ${enabled ? 'enabled' : 'disabled'}`);
   }
@@ -1699,7 +1898,7 @@ class IntelliventSkyDevice extends Homey.Device {
       await this._setLightVoc(p.lightEnabled, p.lightDetection, p.vocEnabled, p.vocDetection);
     });
 
-    await this.setCapabilityValue('intellivent_voc_sensitivity', String(sensitivity));
+    await this.setCapabilityValue('intellivent_voc_sensitivity', String(sensitivity)).catch(this.error);
 
     this.log(`VOC sensitivity set to ${sensitivity}`);
   }
@@ -1782,13 +1981,6 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
   /**
-   * onSettings is called when the user updates the device's settings.
-   */
-  async onSettings({ oldSettings, newSettings, changedKeys }) {
-    this.log('Intellivent Sky device settings were changed');
-  }
-
-  /**
    * onRenamed is called when the user updates the device's name.
    */
   async onRenamed(name) {
@@ -1841,5 +2033,9 @@ class IntelliventSkyDevice extends Homey.Device {
   }
 
 }
+
+// Modes shown as soon as Homey writes them, because the fan reports exactly
+// these back. Everything else waits for the fan's own status report.
+IntelliventSkyDevice.OPTIMISTIC_MODES = ['off', 'pause', 'constant_speed', 'boost', 'timer'];
 
 module.exports = IntelliventSkyDevice;

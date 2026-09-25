@@ -1,6 +1,6 @@
 {
-  "name": "Intellivent Sky/Ice",
-  "version": "1.0.0",
+  "name": "com.intellivent.fresh",
+  "private": true,
   "description": "Intelligent bathroom fans",
   "main": "app.js",
   "scripts": {

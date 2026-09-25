@@ -7,7 +7,7 @@ const { test, afterEach } = require('node:test');
 const assert = require('node:assert');
 
 const {
-  Constants, FakePeripheral, createDevice, delay, sensorBuffer,
+  Constants, FakeCharacteristic, FakePeripheral, createDevice, delay, sensorBuffer,
 } = require('./helpers/fake-homey');
 
 // Short timeouts so the hang/timeout paths run in milliseconds
@@ -113,7 +113,7 @@ test('repair fetches a new code when the fan rejects the stored one', async () =
   const result = await device.runRepair();
 
   assert.strictEqual(result.authenticated, true);
-  assert.strictEqual(device.getSetting('auth_code'), '11223344');
+  assert.strictEqual(device._getAuthCode(), '11223344');
   assert.strictEqual(device._lastAuthenticated, true);
 });
 
@@ -127,7 +127,7 @@ test('repair does not claim control when the fan still rejects authentication', 
 
   assert.strictEqual(result.authenticated, false);
   assert.strictEqual(result.readOnly, false);
-  assert.strictEqual(device.getSetting('auth_code'), 'a1b2c3d4', 'the stored code must be kept');
+  assert.strictEqual(device._getAuthCode(), 'a1b2c3d4', 'the stored code must be kept');
 });
 
 test('the background poll picks up a new code when the fan reports the session unauthenticated', async () => {
@@ -138,7 +138,7 @@ test('the background poll picks up a new code when the fan reports the session u
 
   await device._fetchSensorData();
 
-  assert.strictEqual(device.getSetting('auth_code'), '11223344');
+  assert.strictEqual(device._getAuthCode(), '11223344');
   assert.strictEqual(auth.writes.at(-1).toString('hex'), '11223344');
   assert.strictEqual(device._lastAuthenticated, null, 'unknown until the fan reports again');
 });
@@ -172,4 +172,132 @@ test('the operation queue keeps working after a failed operation', async () => {
   }));
   const result = await device._withConnection(async () => 'ok');
   assert.strictEqual(result, 'ok');
+});
+
+test('a command that cannot run in time fails fast and is dropped, not run late', async () => {
+  const saveTimeout = Constants.USER_COMMAND_TIMEOUT;
+  Constants.USER_COMMAND_TIMEOUT = 100;
+  try {
+    const device = await make();
+    await device._connect();
+    // Something slow holds the device's queue (e.g. a reconnect)
+    const busy = device._withConnection(() => delay(300), { retries: 0, timeout: 0 });
+
+    const started = Date.now();
+    await assert.rejects(
+      device.runUserCommand(() => device.setRpm(1500)),
+      (err) => err.userFacing && err.message === 'errors.command_timeout',
+    );
+    assert.ok(Date.now() - started < 250, 'the caller must not wait for the queue');
+
+    await busy;
+    await delay(50);
+    assert.strictEqual(device.peripheral.chars.temporarySpeed.writes.length, 0, 'the expired command must not run');
+  } finally {
+    Constants.USER_COMMAND_TIMEOUT = saveTimeout;
+  }
+});
+
+test('a link that drops right after connecting keeps its reconnect backoff', async () => {
+  const device = await make();
+  const dropNow = async () => {
+    device._cancelScheduledReconnect();
+    device.peripheral = new FakePeripheral();
+    await device._connect();
+    await device.peripheral.disconnect();
+  };
+
+  await dropNow();
+  assert.strictEqual(device._reconnectAttempts, 1);
+  await dropNow();
+  assert.strictEqual(device._reconnectAttempts, 2, 'a short-lived link must not reset the backoff');
+
+  // A link that stayed up long enough counts as healthy again
+  device._cancelScheduledReconnect();
+  device.peripheral = new FakePeripheral();
+  await device._connect();
+  device._connectedAt -= Constants.STABLE_CONNECTION_TIME;
+  await device.peripheral.disconnect();
+  assert.strictEqual(device._reconnectAttempts, 1, 'a drop after a stable link retries from the start');
+});
+
+test('humidity_changed fires on a meaningful change only', async () => {
+  const device = await make();
+  const report = (humidity) => device._updateCapabilities({
+    mode: 'constant_speed', modeRaw: 16, rpm: 1200, temperature: 21, humidity, authenticated: true,
+  });
+  const fired = () => device.triggers.filter((t) => t.id === 'humidity_changed').length;
+
+  await report(50); // first reading only sets the baseline
+  await report(50.4);
+  await report(50.9);
+  assert.strictEqual(fired(), 0);
+  await report(51.1);
+  assert.strictEqual(fired(), 1);
+  await report(51.5);
+  assert.strictEqual(fired(), 1, 'measured from where it last fired');
+});
+
+test('detection modes are not shown before the fan reports them', async () => {
+  const device = await make({ capabilities: { intellivent_mode: 'constant_speed' } });
+
+  await device.setMode('humidity');
+  assert.strictEqual(device.getCapabilityValue('intellivent_mode'), 'constant_speed');
+  assert.strictEqual(device.triggers.filter((t) => t.id === 'mode_changed').length, 0);
+
+  await device.setMode('boost');
+  assert.strictEqual(device.getCapabilityValue('intellivent_mode'), 'boost');
+  const [trigger] = device.triggers.filter((t) => t.id === 'mode_changed');
+  assert.deepStrictEqual(trigger.tokens, { mode: 'boost', mode_name: 'boost' });
+});
+
+test('the auth code moves to the store and settings only show it masked', async () => {
+  const device = await make({ settings: { auth_code: 'A1B2C3D4' } });
+  assert.strictEqual(device._getAuthCode(), 'a1b2c3d4');
+  assert.strictEqual(device.getSetting('auth_code'), '••••••••');
+
+  const readOnly = await make({ settings: { auth_code: '00000000' } });
+  assert.strictEqual(readOnly.getSetting('auth_code'), '00000000', 'the read-only marker stays visible');
+  assert.strictEqual(readOnly._isReadOnly(), true);
+});
+
+test('firmware and hardware version are read into settings on connect', async () => {
+  const device = await make();
+  device.peripheral.services[0].characteristics.push(
+    new FakeCharacteristic('2a26', Buffer.from('1.2.3\0')), // short form, NUL padded
+    new FakeCharacteristic('2a27', Buffer.from('B')),
+  );
+
+  await device._connect();
+
+  assert.strictEqual(device.getSetting('firmware_version'), '1.2.3');
+  assert.strictEqual(device.getSetting('hardware_version'), 'B');
+});
+
+test('a connection without the status characteristic is refused', async () => {
+  const device = await make();
+  const [service] = device.peripheral.services;
+  service.characteristics = service.characteristics
+    .filter((c) => c !== device.peripheral.chars.deviceStatus);
+
+  await assert.rejects(device._connect());
+  assert.strictEqual(device._isConnected, false);
+});
+
+test('the warning banner is only updated when the state changes', async () => {
+  const device = await make();
+  let calls = 0;
+  const { setWarning } = device;
+  device.setWarning = async (message) => {
+    calls += 1;
+    return setWarning.call(device, message);
+  };
+  const report = () => device._updateCapabilities({
+    mode: 'constant_speed', modeRaw: 16, rpm: 1200, temperature: 21, humidity: 50, authenticated: false,
+  });
+
+  await report();
+  await report();
+  assert.strictEqual(calls, 1);
+  assert.strictEqual(device.warning, 'errors.not_authenticated');
 });

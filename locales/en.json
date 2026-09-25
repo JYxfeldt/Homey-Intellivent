@@ -14,7 +14,8 @@
     "read_only": "Homey can read this fan but not control it. Put the fan in pairing mode and run Repair on the device.",
     "not_authenticated": "The fan is ignoring commands from Homey. Put the fan in pairing mode and run Repair on the device.",
     "ble_unavailable": "Homey's Bluetooth scanning has stopped working - no nearby devices are visible at all, so this is not a range problem. Restarting Homey normally fixes it.",
-    "rate_limited": "The fan could not be reached several times in a row. Homey waits __seconds__ seconds before trying again."
+    "rate_limited": "The fan could not be reached several times in a row. Homey tries again in __seconds__ s.",
+    "command_timeout": "The fan did not respond in time, so the command may not have been carried out. Try again in a moment."
   },
   "repair": {
     "title": "Repair fan",
@@ -40,5 +41,16 @@
     "status_done": "Done.",
     "status_failed": "Failed.",
     "status_waiting": "Waiting for Homey…"
+  },
+  "modes": {
+    "off": "Off",
+    "constant_speed": "Constant Speed",
+    "humidity": "Humidity",
+    "light": "Light",
+    "voc": "VOC",
+    "timer": "Timer",
+    "boost": "Boost",
+    "airing": "Airing",
+    "pause": "Pause"
   }
 }

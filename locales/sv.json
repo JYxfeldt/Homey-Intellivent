@@ -14,7 +14,8 @@
     "read_only": "Homey kan läsa av fläkten men inte styra den. Sätt fläkten i parkopplingsläge och kör Reparera på enheten.",
     "not_authenticated": "Fläkten ignorerar kommandon från Homey. Sätt fläkten i parkopplingsläge och kör Reparera på enheten.",
     "ble_unavailable": "Homeys Bluetooth-skanning har slutat fungera - inga närliggande enheter syns över huvud taget, så det handlar inte om räckvidd. En omstart av Homey brukar lösa det.",
-    "rate_limited": "Fläkten gick inte att nå flera gånger i rad. Homey väntar __seconds__ sekunder innan nästa försök."
+    "rate_limited": "Fläkten gick inte att nå flera gånger i rad. Homey försöker igen om __seconds__ s.",
+    "command_timeout": "Fläkten svarade inte i tid, så kommandot kanske inte utfördes. Försök igen om en stund."
   },
   "repair": {
     "title": "Reparera fläkt",
@@ -40,5 +41,16 @@
     "status_done": "Klart.",
     "status_failed": "Misslyckades.",
     "status_waiting": "Väntar på Homey…"
+  },
+  "modes": {
+    "off": "Av",
+    "constant_speed": "Konstant hastighet",
+    "humidity": "Luftfuktighet",
+    "light": "Ljus",
+    "voc": "VOC",
+    "timer": "Timer",
+    "boost": "Boost",
+    "airing": "Vädring",
+    "pause": "Paus"
   }
 }

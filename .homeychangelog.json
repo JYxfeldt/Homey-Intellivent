@@ -18,5 +18,9 @@
   "0.4.6": {
     "en": "More reliable Bluetooth: a fan whose connection silently dies is now reconnected instead of staying unavailable, a hung Bluetooth call can no longer freeze the device, and a slow connection attempt can no longer take over a newer one. Repair now fetches a new authentication code when the fan rejects the stored one, and commands are refused with a clear message while the fan is not accepting them.",
     "sv": "Stabilare Bluetooth: en fläkt vars anslutning dör i tysthet återansluts nu i stället för att förbli otillgänglig, ett Bluetooth-anrop som hänger sig kan inte längre låsa enheten och ett långsamt anslutningsförsök kan inte längre ta över ett nyare. Reparera hämtar nu en ny autentiseringskod när fläkten avvisar den sparade, och kommandon nekas med ett tydligt meddelande när fläkten inte tar emot dem."
+  },
+  "0.4.7": {
+    "en": "Taps and Flow cards now give up with a clear message after 30 seconds instead of running minutes later. A fan whose connection keeps dropping no longer causes constant Bluetooth scans. The humidity trigger fires on changes of at least 1 %, the mode trigger gets a translated mode name, and firmware and hardware versions now show up in the device settings. Adding a fan no longer lists unrelated Bluetooth devices, and the authentication code is shown masked in settings.",
+    "sv": "Tryck på enhetsrutan och flödeskort ger nu upp med ett tydligt meddelande efter 30 sekunder i stället för att köras flera minuter senare. En fläkt vars anslutning bryts gång på gång orsakar inte längre ständiga Bluetooth-sökningar. Luftfuktighetstriggern startar vid ändringar på minst 1 %, lägestriggern får ett översatt lägesnamn och firmware- och hårdvaruversion visas nu i enhetens inställningar. När du lägger till en fläkt listas inte längre andra Bluetooth-enheter, och autentiseringskoden visas maskerad i inställningarna."
   }
 }

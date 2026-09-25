@@ -145,3 +145,23 @@ test('validateRpm clamps to device limits', () => {
   assert.strictEqual(Parser.validateRpm(9000), Constants.MAX_RPM);
   assert.strictEqual(Parser.validateRpm(1200), 1200);
 });
+
+test('invalid numbers are refused instead of being written as 0', () => {
+  assert.throws(() => Parser.validateRpm(NaN));
+  assert.throws(() => Parser.validateRpm(undefined));
+  assert.throws(() => Parser.validateDetection(NaN));
+  assert.throws(() => Parser.encodeTemporarySpeed('fast'));
+});
+
+test('time values are clamped to what their field can hold', () => {
+  assert.strictEqual(Parser.validateTime(300), 255);
+  assert.strictEqual(Parser.validateTime(-5), 0);
+  // 2000 minutes of boost would overflow the uint16 seconds field
+  assert.strictEqual(Parser.encodeBoost(true, 2400, 2000).readUInt16LE(3), 1092 * 60);
+});
+
+test('uuidMatches accepts the 16-bit short form of standard UUIDs', () => {
+  assert.strictEqual(Parser.uuidMatches('2a26', Constants.FIRMWARE_VERSION), true);
+  assert.strictEqual(Parser.uuidMatches('00002A26-0000-1000-8000-00805F9B34FB', Constants.FIRMWARE_VERSION), true);
+  assert.strictEqual(Parser.uuidMatches('2a27', Constants.FIRMWARE_VERSION), false);
+});

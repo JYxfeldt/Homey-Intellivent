@@ -35,8 +35,10 @@ Control your Fresh Intellivent ventilation fans via Bluetooth using your Homey P
 ## Flow Cards
 
 ### Triggers
-- Mode changed
-- Humidity changed
+- Mode changed (tokens: `mode`, the stable id such as `humidity`, and
+  `mode_name`, the translated name for notifications)
+- Humidity changed (fires when humidity has moved at least 1 % since it
+  last fired)
 
 ### Conditions
 - Mode is/is not...
@@ -60,7 +62,8 @@ To pair your Intellivent device:
 
 Note: the authentication code is only readable from the fan while it is in
 pairing mode. If pairing completes but the device reports read-only mode,
-put the fan back into pairing mode and re-pair.
+put the fan back into pairing mode and run Repair on the device. The settings
+page shows the code masked; `00000000` there means read-only.
 
 ## Troubleshooting
 
