@@ -28,9 +28,8 @@
   calling a global function rather than addEventListener, and a plain
   onHomeyReady function declaration exactly as the SDK documents it.
 
-  The status line below is a deliberate diagnostic. If the script runs at all,
-  it says so on screen - which turns "nothing happens" into a fact we can read
-  off a screenshot instead of guessing at again.
+  The status line below shows whether the script is running, so "nothing
+  happens" can be told apart from a view whose script never started.
 -->
 <button
   type="button"
@@ -97,7 +96,8 @@
     }
 
     if (!ivHomey) {
-      ivSetStatus('Homey object never arrived - please report this.');
+      // No Homey object means no translations either
+      ivSetStatus('The repair view could not start. Close it and try again.');
       return;
     }
     if (ivRunning) return;
@@ -143,8 +143,7 @@
   }
 
   // Wire everything up once, from whichever route actually delivered the
-  // Homey object. `source` is shown on screen so the next screenshot says
-  // which mechanism worked instead of leaving it to be inferred again.
+  // Homey object. `source` only goes to the browser console.
   function ivInit(homeyObj, source) {
     if (ivHomey || !homeyObj) return;
     ivHomey = homeyObj;
@@ -175,7 +174,12 @@
       // Already shown, or not supported on this client
     }
 
-    ivSetStatus(ivT('repair.status_ready', 'Ready.') + ' [' + source + ']');
+    ivSetStatus(ivT('repair.status_ready', 'Ready.'));
+    try {
+      console.log('Repair view initialised via ' + source);
+    } catch (err) {
+      // No console on some clients
+    }
   }
 
   // The documented route. Declared as a plain global function exactly as the
@@ -209,7 +213,7 @@
       }
       if (ivTries > 100) { // ~20 s
         window.clearInterval(ivTimer);
-        ivSetStatus('Homey object never arrived - please report this.');
+        ivSetStatus('The repair view could not start. Close it and try again.');
       }
     }, 200);
   }
