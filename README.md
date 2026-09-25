@@ -8,7 +8,7 @@ Control your Fresh Intellivent ventilation fans via Bluetooth using your Homey P
 
 ## Features
 
-- **On/Off Control**: Turn your ventilation fan on or off
+- **On/Off Control**: Off pauses the fan; On ends the pause and the fan resumes its own setup (constant speed only if nothing else is set up)
 - **Fan Speed Control**: Adjust fan speed from 800-2400 RPM
 - **Multiple Operating Modes**:
   - Constant Speed: Run at a fixed RPM

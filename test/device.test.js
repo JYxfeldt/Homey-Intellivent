@@ -301,3 +301,51 @@ test('the warning banner is only updated when the state changes', async () => {
   assert.strictEqual(calls, 1);
   assert.strictEqual(device.warning, 'errors.not_authenticated');
 });
+
+test('turning off pauses the fan', async () => {
+  const device = await make({ capabilities: { intellivent_mode: 'humidity' } });
+
+  await device.listeners.onoff(false);
+
+  assert.deepStrictEqual([...device.peripheral.chars.pause.writes[0]], [1, 0]);
+  assert.strictEqual(device.getCapabilityValue('intellivent_mode'), 'pause');
+});
+
+test('turning on after a pause ends the pause instead of forcing constant speed', async () => {
+  const device = await make({ capabilities: { intellivent_mode: 'pause' } });
+
+  await device.listeners.onoff(true);
+
+  const { pause, constantSpeed } = device.peripheral.chars;
+  assert.deepStrictEqual([...pause.writes[0]], [0, 0]);
+  assert.strictEqual(constantSpeed.writes.length, 0, 'the fan\'s own setup must be kept');
+});
+
+test('turning on with nothing set up to run falls back to constant speed', async () => {
+  const device = await make({ capabilities: { intellivent_mode: 'off', intellivent_rpm: 1600 } });
+
+  await device.listeners.onoff(true);
+
+  const { pause, constantSpeed } = device.peripheral.chars;
+  assert.strictEqual(pause.writes.length, 0);
+  assert.strictEqual(constantSpeed.writes[0].readUInt16LE(1), 1600);
+  assert.strictEqual(device.getCapabilityValue('intellivent_mode'), 'constant_speed');
+});
+
+test('turning on a fan that is already running writes nothing', async () => {
+  const device = await make({ capabilities: { intellivent_mode: 'humidity' } });
+
+  await device.listeners.onoff(true);
+
+  const { pause, constantSpeed } = device.peripheral.chars;
+  assert.strictEqual(pause.writes.length + constantSpeed.writes.length, 0);
+});
+
+test('the Off mode is shown as the pause the fan reports', async () => {
+  const device = await make({ capabilities: { intellivent_mode: 'constant_speed', onoff: true } });
+
+  await device.setMode('off');
+
+  assert.strictEqual(device.getCapabilityValue('intellivent_mode'), 'pause');
+  assert.strictEqual(device.getCapabilityValue('onoff'), false);
+});
