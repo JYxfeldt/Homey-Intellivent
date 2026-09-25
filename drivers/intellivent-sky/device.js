@@ -79,7 +79,43 @@ class IntelliventSkyDevice extends Homey.Device {
    */
   _checkWriteAccess() {
     if (this._isReadOnly()) {
-      throw new Error(this.homey.__('errors.read_only'));
+      throw this._userError(this.homey.__('errors.read_only'));
+    }
+  }
+
+  /**
+   * Build an error whose message is already fit to show the user
+   * @param {string} message - Translated message
+   * @returns {Error}
+   */
+  _userError(message) {
+    const err = new Error(message);
+    err.userFacing = true;
+    return err;
+  }
+
+  /**
+   * Run a user-initiated command (tile, Flow card, repair) and turn whatever
+   * goes wrong into a translated message the user can act on. The technical
+   * error stays in the log.
+   * @param {Function} command - The command to run
+   * @returns {*} - Result of the command
+   */
+  async runUserCommand(command) {
+    try {
+      return await command();
+    } catch (err) {
+      if (err && err.userFacing) throw err;
+
+      this.error('Command failed:', err && err.message);
+      if (err && err.rateLimited) {
+        throw this._userError(this.homey.__('errors.rate_limited', {
+          seconds: String(err.retryAfterSeconds),
+        }));
+      }
+      // A failed connection is torn down before the error reaches us
+      const key = this._isConnected ? 'errors.write_failed' : 'errors.connection_failed';
+      throw this._userError(this.homey.__(key));
     }
   }
 
@@ -132,8 +168,14 @@ class IntelliventSkyDevice extends Homey.Device {
    * Register capability listeners
    */
   _registerCapabilityListeners() {
+    // Every listener runs through runUserCommand so the tile shows a readable error
+    const listen = (capability, listener) => this.registerCapabilityListener(
+      capability,
+      (value, opts) => this.runUserCommand(() => listener(value, opts)),
+    );
+
     // On/Off capability
-    this.registerCapabilityListener('onoff', async (value) => {
+    listen('onoff', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting onoff to ${value}`);
       await this._withConnection(async () => {
@@ -149,63 +191,63 @@ class IntelliventSkyDevice extends Homey.Device {
     });
 
     // Mode capability
-    this.registerCapabilityListener('intellivent_mode', async (value) => {
+    listen('intellivent_mode', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting mode to ${value}`);
       await this.setMode(value);
     });
 
     // RPM capability
-    this.registerCapabilityListener('intellivent_rpm', async (value) => {
+    listen('intellivent_rpm', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting RPM to ${value}`);
       await this.setRpm(value);
     });
 
     // Humidity enabled capability
-    this.registerCapabilityListener('intellivent_humidity_enabled', async (value) => {
+    listen('intellivent_humidity_enabled', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting humidity enabled to ${value}`);
       await this.setHumidityEnabled(value);
     });
 
     // Humidity sensitivity capability
-    this.registerCapabilityListener('intellivent_humidity_sensitivity', async (value) => {
+    listen('intellivent_humidity_sensitivity', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting humidity sensitivity to ${value}`);
       await this.setHumiditySensitivity(parseInt(value, 10));
     });
 
     // Light enabled capability
-    this.registerCapabilityListener('intellivent_light_enabled', async (value) => {
+    listen('intellivent_light_enabled', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting light enabled to ${value}`);
       await this.setLightEnabled(value);
     });
 
     // Light sensitivity capability
-    this.registerCapabilityListener('intellivent_light_sensitivity', async (value) => {
+    listen('intellivent_light_sensitivity', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting light sensitivity to ${value}`);
       await this.setLightSensitivity(parseInt(value, 10));
     });
 
     // VOC enabled capability
-    this.registerCapabilityListener('intellivent_voc_enabled', async (value) => {
+    listen('intellivent_voc_enabled', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting VOC enabled to ${value}`);
       await this.setVocEnabled(value);
     });
 
     // VOC sensitivity capability
-    this.registerCapabilityListener('intellivent_voc_sensitivity', async (value) => {
+    listen('intellivent_voc_sensitivity', async (value) => {
       this._checkWriteAccess();
       this.log(`Setting VOC sensitivity to ${value}`);
       await this.setVocSensitivity(parseInt(value, 10));
     });
 
     // Boost button - one tap, using the speed/duration from device settings
-    this.registerCapabilityListener('intellivent_boost', async () => {
+    listen('intellivent_boost', async () => {
       this._checkWriteAccess();
       const rpm = this.getSetting('boost_rpm') || Constants.MAX_RPM;
       const minutes = this.getSetting('boost_minutes') || Constants.DEFAULT_BOOST_MINUTES;
@@ -302,6 +344,7 @@ class IntelliventSkyDevice extends Homey.Device {
       const remainingSeconds = Math.ceil((this._extendedCooldownUntil - now) / 1000);
       const err = new Error(`Connection rate limited. Try again in ${remainingSeconds} seconds.`);
       err.rateLimited = true;
+      err.retryAfterSeconds = remainingSeconds;
       throw err;
     }
 
@@ -318,6 +361,7 @@ class IntelliventSkyDevice extends Homey.Device {
       this.log(`Too many connection failures. Entering ${cooldownSeconds}s cooldown.`);
       const err = new Error(`Too many connection failures. Try again in ${cooldownSeconds} seconds.`);
       err.rateLimited = true;
+      err.retryAfterSeconds = cooldownSeconds;
       throw err;
     }
   }
@@ -610,7 +654,7 @@ class IntelliventSkyDevice extends Homey.Device {
   async runRepair(onProgress = () => {}) {
     const run = this._operationQueue
       .catch(() => {})
-      .then(() => this._repairSequence(onProgress));
+      .then(() => this.runUserCommand(() => this._repairSequence(onProgress)));
     this._operationQueue = run.catch(() => {});
     return run;
   }
@@ -652,7 +696,7 @@ class IntelliventSkyDevice extends Homey.Device {
     // capability value from before the fan went away
     const char = this._characteristics.deviceStatus;
     if (!char) {
-      throw new Error(t('error_no_status_characteristic'));
+      throw this._userError(t('error_no_status_characteristic'));
     }
 
     const sensorData = Parser.parseSensorData(await char.read());

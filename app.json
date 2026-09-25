@@ -1,24 +1,27 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.4.3",
+  "version": "0.4.5",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
   "name": {
-    "en": "Intellivent Sky/Ice"
+    "en": "Fresh Intellivent",
+    "sv": "Fresh Intellivent"
   },
   "description": {
-    "en": "Intelligent bathroom fans"
+    "en": "Intelligent ventilation for your bathroom",
+    "sv": "Intelligent ventilation för ditt badrum"
   },
   "category": ["climate"],
   "tags": {
-    "en": ["ventilation", "fan", "bathroom", "intellivent", "fresh", "bluetooth", "ble"]
+    "en": ["ventilation", "fan", "bathroom fan", "intellivent", "fresh", "bluetooth", "ble"],
+    "sv": ["ventilation", "fläkt", "badrumsfläkt", "intellivent", "fresh", "bluetooth", "ble"]
   },
   "permissions": ["homey:wireless:ble"],
   "images": {
-    "small": "/assets/images/small.png",
-    "large": "/assets/images/large.png",
-    "xlarge": "/assets/images/xlarge.png"
+    "small": "/assets/images/small.jpg",
+    "large": "/assets/images/large.jpg",
+    "xlarge": "/assets/images/xlarge.jpg"
   },
   "author": {
     "name": "JYxfeldt"
@@ -27,6 +30,12 @@
     "developers": [
       {
         "name": "JYxfeldt"
+      },
+      {
+        "name": "Kristoffer Konstad Hansen"
+      },
+      {
+        "name": "LaStrada (pyfreshintellivent)"
       }
     ]
   },
@@ -38,31 +47,19 @@
     {
       "id": "intellivent-sky",
       "name": {
-        "en": "Intellivent Sky"
+        "en": "Intellivent Sky",
+        "sv": "Intellivent Sky"
       },
       "class": "fan",
-      "capabilities": [
-        "onoff",
-        "measure_rpm",
-        "intellivent_rpm",
-        "measure_humidity",
-        "measure_temperature",
-        "intellivent_mode",
-        "intellivent_humidity_enabled",
-        "intellivent_humidity_sensitivity",
-        "intellivent_light_enabled",
-        "intellivent_light_sensitivity",
-        "intellivent_voc_enabled",
-        "intellivent_voc_sensitivity",
-        "intellivent_boost"
-      ],
+      "capabilities": ["onoff", "measure_rpm", "intellivent_rpm", "measure_humidity", "measure_temperature", "intellivent_mode", "intellivent_humidity_enabled", "intellivent_humidity_sensitivity", "intellivent_light_enabled", "intellivent_light_sensitivity", "intellivent_voc_enabled", "intellivent_voc_sensitivity", "intellivent_boost"],
       "capabilitiesOptions": {
         "intellivent_rpm": {
           "min": 800,
           "max": 2400,
           "step": 100,
           "title": {
-            "en": "Fan Speed"
+            "en": "Fan Speed",
+            "sv": "Fläkthastighet"
           },
           "preventTag": false,
           "preventInsights": false
@@ -71,15 +68,22 @@
       "platforms": ["local"],
       "connectivity": ["ble"],
       "images": {
-        "small": "/drivers/intellivent-sky/assets/images/small.png",
-        "large": "/drivers/intellivent-sky/assets/images/large.png",
-        "xlarge": "/drivers/intellivent-sky/assets/images/xlarge.png"
+        "small": "/drivers/intellivent-sky/assets/images/small.jpg",
+        "large": "/drivers/intellivent-sky/assets/images/large.jpg",
+        "xlarge": "/drivers/intellivent-sky/assets/images/xlarge.jpg"
       },
       "pair": [
+        {
+          "id": "instructions",
+          "navigation": {
+            "next": "list_devices"
+          }
+        },
         {
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
+            "prev": "instructions",
             "next": "add_devices"
           },
           "options": {
@@ -100,17 +104,20 @@
         {
           "type": "group",
           "label": {
-            "en": "Authentication"
+            "en": "Authentication",
+            "sv": "Autentisering"
           },
           "children": [
             {
               "id": "auth_code",
-              "type": "text",
+              "type": "label",
               "label": {
-                "en": "Authentication Code"
+                "en": "Authentication Code",
+                "sv": "Autentiseringskod"
               },
               "hint": {
-                "en": "The authentication code retrieved from the device during pairing"
+                "en": "Read automatically from the fan when it is added in pairing mode. 00000000 means Homey can read the fan but not control it: put the fan in pairing mode and run Repair on the device.",
+                "sv": "Läses automatiskt från fläkten när den läggs till i parkopplingsläge. 00000000 betyder att Homey kan läsa av fläkten men inte styra den: sätt fläkten i parkopplingsläge och kör Reparera på enheten."
               },
               "value": ""
             }
@@ -119,14 +126,16 @@
         {
           "type": "group",
           "label": {
-            "en": "Device Information"
+            "en": "Device Information",
+            "sv": "Enhetsinformation"
           },
           "children": [
             {
               "id": "firmware_version",
               "type": "label",
               "label": {
-                "en": "Firmware Version"
+                "en": "Firmware Version",
+                "sv": "Firmwareversion"
               },
               "value": "Unknown"
             },
@@ -134,7 +143,8 @@
               "id": "hardware_version",
               "type": "label",
               "label": {
-                "en": "Hardware Version"
+                "en": "Hardware Version",
+                "sv": "Hårdvaruversion"
               },
               "value": "Unknown"
             }
@@ -143,17 +153,20 @@
         {
           "type": "group",
           "label": {
-            "en": "Boost"
+            "en": "Boost",
+            "sv": "Boost"
           },
           "children": [
             {
               "id": "boost_rpm",
               "type": "number",
               "label": {
-                "en": "Boost Speed"
+                "en": "Boost Speed",
+                "sv": "Boosthastighet"
               },
               "hint": {
-                "en": "Fan speed used by the Boost button on the device tile"
+                "en": "Fan speed used by the Boost button on the device tile",
+                "sv": "Fläkthastighet som Boost-knappen på enhetsrutan använder"
               },
               "value": 2400,
               "min": 800,
@@ -165,10 +178,12 @@
               "id": "boost_minutes",
               "type": "number",
               "label": {
-                "en": "Boost Duration"
+                "en": "Boost Duration",
+                "sv": "Boosttid"
               },
               "hint": {
-                "en": "How long the Boost button runs, in minutes"
+                "en": "How long the Boost button runs, in minutes",
+                "sv": "Hur länge Boost-knappen kör, i minuter"
               },
               "value": 15,
               "min": 1,
@@ -185,10 +200,12 @@
     "measure_rpm": {
       "type": "number",
       "title": {
-        "en": "Current RPM"
+        "en": "Current RPM",
+        "sv": "Aktuellt varvtal"
       },
       "units": {
-        "en": "RPM"
+        "en": "RPM",
+        "sv": "RPM"
       },
       "min": 0,
       "max": 2400,
@@ -200,61 +217,71 @@
     "intellivent_mode": {
       "type": "enum",
       "title": {
-        "en": "Mode"
+        "en": "Mode",
+        "sv": "Läge"
       },
       "values": [
         {
           "id": "off",
           "title": {
-            "en": "Off"
+            "en": "Off",
+            "sv": "Av"
           }
         },
         {
           "id": "constant_speed",
           "title": {
-            "en": "Constant Speed"
+            "en": "Constant Speed",
+            "sv": "Konstant hastighet"
           }
         },
         {
           "id": "humidity",
           "title": {
-            "en": "Humidity"
+            "en": "Humidity",
+            "sv": "Luftfuktighet"
           }
         },
         {
           "id": "light",
           "title": {
-            "en": "Light"
+            "en": "Light",
+            "sv": "Ljus"
           }
         },
         {
           "id": "voc",
           "title": {
-            "en": "VOC"
+            "en": "VOC",
+            "sv": "VOC"
           }
         },
         {
           "id": "timer",
           "title": {
-            "en": "Timer"
+            "en": "Timer",
+            "sv": "Timer"
           }
         },
         {
           "id": "boost",
           "title": {
-            "en": "Boost"
+            "en": "Boost",
+            "sv": "Boost"
           }
         },
         {
           "id": "airing",
           "title": {
-            "en": "Airing"
+            "en": "Airing",
+            "sv": "Vädring"
           }
         },
         {
           "id": "pause",
           "title": {
-            "en": "Pause"
+            "en": "Pause",
+            "sv": "Paus"
           }
         }
       ],
@@ -265,10 +292,12 @@
     "intellivent_rpm": {
       "type": "number",
       "title": {
-        "en": "RPM"
+        "en": "RPM",
+        "sv": "RPM"
       },
       "units": {
-        "en": "RPM"
+        "en": "RPM",
+        "sv": "RPM"
       },
       "min": 800,
       "max": 2400,
@@ -281,7 +310,8 @@
     "intellivent_humidity_enabled": {
       "type": "boolean",
       "title": {
-        "en": "Humidity Detection"
+        "en": "Humidity Detection",
+        "sv": "Fuktstyrning"
       },
       "getable": true,
       "setable": true,
@@ -290,12 +320,31 @@
     "intellivent_humidity_sensitivity": {
       "type": "enum",
       "title": {
-        "en": "Humidity Sensitivity"
+        "en": "Humidity Sensitivity",
+        "sv": "Fuktkänslighet"
       },
       "values": [
-        { "id": "1", "title": { "en": "Low" } },
-        { "id": "2", "title": { "en": "Medium" } },
-        { "id": "3", "title": { "en": "High" } }
+        {
+          "id": "1",
+          "title": {
+            "en": "Low",
+            "sv": "Låg"
+          }
+        },
+        {
+          "id": "2",
+          "title": {
+            "en": "Medium",
+            "sv": "Medel"
+          }
+        },
+        {
+          "id": "3",
+          "title": {
+            "en": "High",
+            "sv": "Hög"
+          }
+        }
       ],
       "getable": true,
       "setable": true,
@@ -304,7 +353,8 @@
     "intellivent_light_enabled": {
       "type": "boolean",
       "title": {
-        "en": "Light Detection"
+        "en": "Light Detection",
+        "sv": "Ljusstyrning"
       },
       "getable": true,
       "setable": true,
@@ -313,12 +363,31 @@
     "intellivent_light_sensitivity": {
       "type": "enum",
       "title": {
-        "en": "Light Sensitivity"
+        "en": "Light Sensitivity",
+        "sv": "Ljuskänslighet"
       },
       "values": [
-        { "id": "1", "title": { "en": "Low" } },
-        { "id": "2", "title": { "en": "Medium" } },
-        { "id": "3", "title": { "en": "High" } }
+        {
+          "id": "1",
+          "title": {
+            "en": "Low",
+            "sv": "Låg"
+          }
+        },
+        {
+          "id": "2",
+          "title": {
+            "en": "Medium",
+            "sv": "Medel"
+          }
+        },
+        {
+          "id": "3",
+          "title": {
+            "en": "High",
+            "sv": "Hög"
+          }
+        }
       ],
       "getable": true,
       "setable": true,
@@ -327,7 +396,8 @@
     "intellivent_voc_enabled": {
       "type": "boolean",
       "title": {
-        "en": "Smell Detection"
+        "en": "Smell Detection",
+        "sv": "Luktstyrning"
       },
       "getable": true,
       "setable": true,
@@ -336,12 +406,31 @@
     "intellivent_voc_sensitivity": {
       "type": "enum",
       "title": {
-        "en": "Smell Sensitivity"
+        "en": "Smell Sensitivity",
+        "sv": "Luktkänslighet"
       },
       "values": [
-        { "id": "1", "title": { "en": "Low" } },
-        { "id": "2", "title": { "en": "Medium" } },
-        { "id": "3", "title": { "en": "High" } }
+        {
+          "id": "1",
+          "title": {
+            "en": "Low",
+            "sv": "Låg"
+          }
+        },
+        {
+          "id": "2",
+          "title": {
+            "en": "Medium",
+            "sv": "Medel"
+          }
+        },
+        {
+          "id": "3",
+          "title": {
+            "en": "High",
+            "sv": "Hög"
+          }
+        }
       ],
       "getable": true,
       "setable": true,
@@ -350,10 +439,12 @@
     "intellivent_boost": {
       "type": "boolean",
       "title": {
-        "en": "Boost"
+        "en": "Boost",
+        "sv": "Boost"
       },
       "desc": {
-        "en": "Run the fan at the configured boost speed for the configured duration"
+        "en": "Run the fan at the configured boost speed for the configured duration",
+        "sv": "Kör fläkten på inställd boosthastighet under inställd tid"
       },
       "getable": false,
       "setable": true,
@@ -365,17 +456,20 @@
       {
         "id": "mode_changed",
         "title": {
-          "en": "Mode changed"
+          "en": "Mode changed",
+          "sv": "Läget ändrades"
         },
         "tokens": [
           {
             "name": "mode",
             "type": "string",
             "title": {
-              "en": "Mode"
+              "en": "Mode",
+              "sv": "Läge"
             },
             "example": {
-              "en": "Humidity"
+              "en": "Humidity",
+              "sv": "Luftfuktighet"
             }
           }
         ],
@@ -390,18 +484,18 @@
       {
         "id": "humidity_changed",
         "title": {
-          "en": "Humidity changed"
+          "en": "Humidity changed",
+          "sv": "Luftfuktigheten ändrades"
         },
         "tokens": [
           {
             "name": "humidity",
             "type": "number",
             "title": {
-              "en": "Humidity"
+              "en": "Humidity",
+              "sv": "Luftfuktighet"
             },
-            "example": {
-              "en": "65"
-            }
+            "example": 65
           }
         ],
         "args": [
@@ -417,10 +511,12 @@
       {
         "id": "mode_is",
         "title": {
-          "en": "Mode !{{is|is not}} ..."
+          "en": "Mode !{{is|is not}} ...",
+          "sv": "Läget !{{är|är inte}} ..."
         },
         "titleFormatted": {
-          "en": "Mode !{{is|is not}} [[mode]]"
+          "en": "Mode !{{is|is not}} [[mode]]",
+          "sv": "Läget !{{är|är inte}} [[mode]]"
         },
         "args": [
           {
@@ -432,18 +528,73 @@
             "type": "dropdown",
             "name": "mode",
             "title": {
-              "en": "Mode"
+              "en": "Mode",
+              "sv": "Läge"
             },
             "values": [
-              { "id": "off", "label": { "en": "Off" } },
-              { "id": "constant_speed", "label": { "en": "Constant Speed" } },
-              { "id": "humidity", "label": { "en": "Humidity" } },
-              { "id": "light", "label": { "en": "Light" } },
-              { "id": "voc", "label": { "en": "VOC" } },
-              { "id": "timer", "label": { "en": "Timer" } },
-              { "id": "boost", "label": { "en": "Boost" } },
-              { "id": "airing", "label": { "en": "Airing" } },
-              { "id": "pause", "label": { "en": "Pause" } }
+              {
+                "id": "off",
+                "label": {
+                  "en": "Off",
+                  "sv": "Av"
+                }
+              },
+              {
+                "id": "constant_speed",
+                "label": {
+                  "en": "Constant Speed",
+                  "sv": "Konstant hastighet"
+                }
+              },
+              {
+                "id": "humidity",
+                "label": {
+                  "en": "Humidity",
+                  "sv": "Luftfuktighet"
+                }
+              },
+              {
+                "id": "light",
+                "label": {
+                  "en": "Light",
+                  "sv": "Ljus"
+                }
+              },
+              {
+                "id": "voc",
+                "label": {
+                  "en": "VOC",
+                  "sv": "VOC"
+                }
+              },
+              {
+                "id": "timer",
+                "label": {
+                  "en": "Timer",
+                  "sv": "Timer"
+                }
+              },
+              {
+                "id": "boost",
+                "label": {
+                  "en": "Boost",
+                  "sv": "Boost"
+                }
+              },
+              {
+                "id": "airing",
+                "label": {
+                  "en": "Airing",
+                  "sv": "Vädring"
+                }
+              },
+              {
+                "id": "pause",
+                "label": {
+                  "en": "Pause",
+                  "sv": "Paus"
+                }
+              }
             ]
           }
         ]
@@ -453,10 +604,12 @@
       {
         "id": "set_mode",
         "title": {
-          "en": "Set mode"
+          "en": "Set mode",
+          "sv": "Ställ in läge"
         },
         "titleFormatted": {
-          "en": "Set mode to [[mode]]"
+          "en": "Set mode to [[mode]]",
+          "sv": "Ställ in läget [[mode]]"
         },
         "args": [
           {
@@ -468,18 +621,73 @@
             "type": "dropdown",
             "name": "mode",
             "title": {
-              "en": "Mode"
+              "en": "Mode",
+              "sv": "Läge"
             },
             "values": [
-              { "id": "off", "label": { "en": "Off" } },
-              { "id": "constant_speed", "label": { "en": "Constant Speed" } },
-              { "id": "humidity", "label": { "en": "Humidity" } },
-              { "id": "light", "label": { "en": "Light" } },
-              { "id": "voc", "label": { "en": "VOC" } },
-              { "id": "timer", "label": { "en": "Timer" } },
-              { "id": "boost", "label": { "en": "Boost" } },
-              { "id": "airing", "label": { "en": "Airing" } },
-              { "id": "pause", "label": { "en": "Pause" } }
+              {
+                "id": "off",
+                "label": {
+                  "en": "Off",
+                  "sv": "Av"
+                }
+              },
+              {
+                "id": "constant_speed",
+                "label": {
+                  "en": "Constant Speed",
+                  "sv": "Konstant hastighet"
+                }
+              },
+              {
+                "id": "humidity",
+                "label": {
+                  "en": "Humidity",
+                  "sv": "Luftfuktighet"
+                }
+              },
+              {
+                "id": "light",
+                "label": {
+                  "en": "Light",
+                  "sv": "Ljus"
+                }
+              },
+              {
+                "id": "voc",
+                "label": {
+                  "en": "VOC",
+                  "sv": "VOC"
+                }
+              },
+              {
+                "id": "timer",
+                "label": {
+                  "en": "Timer",
+                  "sv": "Timer"
+                }
+              },
+              {
+                "id": "boost",
+                "label": {
+                  "en": "Boost",
+                  "sv": "Boost"
+                }
+              },
+              {
+                "id": "airing",
+                "label": {
+                  "en": "Airing",
+                  "sv": "Vädring"
+                }
+              },
+              {
+                "id": "pause",
+                "label": {
+                  "en": "Pause",
+                  "sv": "Paus"
+                }
+              }
             ]
           }
         ]
@@ -487,10 +695,12 @@
       {
         "id": "set_rpm",
         "title": {
-          "en": "Set fan speed (RPM)"
+          "en": "Set fan speed",
+          "sv": "Ställ in fläkthastighet"
         },
         "titleFormatted": {
-          "en": "Set fan speed to [[rpm]] RPM"
+          "en": "Set fan speed to [[rpm]] RPM",
+          "sv": "Ställ in fläkthastigheten på [[rpm]] RPM"
         },
         "args": [
           {
@@ -502,7 +712,8 @@
             "type": "range",
             "name": "rpm",
             "title": {
-              "en": "RPM"
+              "en": "RPM",
+              "sv": "RPM"
             },
             "min": 800,
             "max": 2400,
@@ -513,10 +724,12 @@
       {
         "id": "start_boost",
         "title": {
-          "en": "Start boost"
+          "en": "Start boost",
+          "sv": "Starta boost"
         },
         "titleFormatted": {
-          "en": "Start boost for [[duration]] minutes at [[rpm]] RPM"
+          "en": "Start boost for [[duration]] minutes at [[rpm]] RPM",
+          "sv": "Starta boost i [[duration]] minuter på [[rpm]] RPM"
         },
         "args": [
           {
@@ -528,7 +741,8 @@
             "type": "range",
             "name": "duration",
             "title": {
-              "en": "Duration (minutes)"
+              "en": "Minutes",
+              "sv": "Minuter"
             },
             "min": 1,
             "max": 60,
@@ -538,7 +752,8 @@
             "type": "range",
             "name": "rpm",
             "title": {
-              "en": "RPM"
+              "en": "RPM",
+              "sv": "RPM"
             },
             "min": 800,
             "max": 2400,
@@ -549,10 +764,16 @@
       {
         "id": "configure_humidity",
         "title": {
-          "en": "Configure humidity detection"
+          "en": "Configure humidity detection",
+          "sv": "Ställ in fuktstyrning"
         },
         "titleFormatted": {
-          "en": "Set humidity detection to [[enabled]] with [[sensitivity]] sensitivity at [[rpm]] RPM"
+          "en": "Humidity detection [[enabled]], [[sensitivity]] sensitivity, [[rpm]] RPM",
+          "sv": "Fuktstyrning [[enabled]], [[sensitivity]] känslighet, [[rpm]] RPM"
+        },
+        "hint": {
+          "en": "Turns humidity detection on or off, and sets how sensitive it is and how fast the fan runs when the humidity rises.",
+          "sv": "Slår på eller av fuktstyrningen och ställer in hur känslig den är och hur fort fläkten går när luftfuktigheten stiger."
         },
         "args": [
           {
@@ -564,30 +785,63 @@
             "type": "dropdown",
             "name": "enabled",
             "title": {
-              "en": "State"
+              "en": "On or off",
+              "sv": "På eller av"
             },
             "values": [
-              { "id": "true", "label": { "en": "Enabled" } },
-              { "id": "false", "label": { "en": "Disabled" } }
+              {
+                "id": "true",
+                "label": {
+                  "en": "Enabled",
+                  "sv": "På"
+                }
+              },
+              {
+                "id": "false",
+                "label": {
+                  "en": "Disabled",
+                  "sv": "Av"
+                }
+              }
             ]
           },
           {
             "type": "dropdown",
             "name": "sensitivity",
             "title": {
-              "en": "Sensitivity"
+              "en": "Sensitivity",
+              "sv": "Känslighet"
             },
             "values": [
-              { "id": "1", "label": { "en": "Low" } },
-              { "id": "2", "label": { "en": "Medium" } },
-              { "id": "3", "label": { "en": "High" } }
+              {
+                "id": "1",
+                "label": {
+                  "en": "Low",
+                  "sv": "Låg"
+                }
+              },
+              {
+                "id": "2",
+                "label": {
+                  "en": "Medium",
+                  "sv": "Medel"
+                }
+              },
+              {
+                "id": "3",
+                "label": {
+                  "en": "High",
+                  "sv": "Hög"
+                }
+              }
             ]
           },
           {
             "type": "range",
             "name": "rpm",
             "title": {
-              "en": "RPM"
+              "en": "RPM",
+              "sv": "RPM"
             },
             "min": 800,
             "max": 2400,

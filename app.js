@@ -187,19 +187,19 @@ class IntelliventApp extends Homey.App {
     // Action: Set mode
     this.homey.flow.getActionCard('set_mode')
       .registerRunListener(async (args) => {
-        await args.device.setMode(args.mode);
+        await args.device.runUserCommand(() => args.device.setMode(args.mode));
       });
 
     // Action: Set RPM
     this.homey.flow.getActionCard('set_rpm')
       .registerRunListener(async (args) => {
-        await args.device.setRpm(args.rpm);
+        await args.device.runUserCommand(() => args.device.setRpm(args.rpm));
       });
 
     // Action: Start boost
     this.homey.flow.getActionCard('start_boost')
       .registerRunListener(async (args) => {
-        await args.device.startBoost(args.duration, args.rpm);
+        await args.device.runUserCommand(() => args.device.startBoost(args.duration, args.rpm));
       });
 
     // Action: Configure humidity detection
@@ -207,7 +207,7 @@ class IntelliventApp extends Homey.App {
       .registerRunListener(async (args) => {
         const enabled = args.enabled === 'true';
         const sensitivity = parseInt(args.sensitivity, 10);
-        await args.device.configureHumidity(enabled, sensitivity, args.rpm);
+        await args.device.runUserCommand(() => args.device.configureHumidity(enabled, sensitivity, args.rpm));
       });
   }
 
