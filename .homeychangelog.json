@@ -26,5 +26,9 @@
   "0.4.8": {
     "en": "Turning the fan on after turning it off now resumes its own setup (humidity, light, air quality or constant speed) instead of switching it to constant speed for good. The Off mode is shown as the pause the fan reports.",
     "sv": "När fläkten slås på igen efter att ha stängts av återupptar den nu sina egna inställningar (fukt, ljus, luftkvalitet eller konstant hastighet) i stället för att permanent växla till konstant hastighet. Läget Av visas som den paus fläkten rapporterar."
+  },
+  "0.4.9": {
+    "en": "Maintenance: security update of the developer tooling. No change to how the app works.",
+    "sv": "Underhåll: säkerhetsuppdatering av utvecklingsverktygen. Ingen ändring av hur appen fungerar."
   }
 }
