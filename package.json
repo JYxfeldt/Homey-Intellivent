@@ -6,7 +6,7 @@
   "scripts": {
     "lint": "eslint --ext .js .",
     "lint:fix": "eslint --ext .js . --fix",
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "author": "JYxfeldt",
   "license": "MIT",

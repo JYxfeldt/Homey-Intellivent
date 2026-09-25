@@ -14,5 +14,9 @@
   "0.4.5": {
     "en": "The app is now called Fresh Intellivent and is fully available in Swedish. Adding a fan now starts with instructions for putting it in pairing mode, error messages are clearer, and the authentication code can no longer be edited by mistake. The App Store page now shows real product photos of the fan.",
     "sv": "Appen heter nu Fresh Intellivent och finns helt på svenska. När du lägger till en fläkt visas först instruktioner för parkopplingsläget, felmeddelandena är tydligare och autentiseringskoden kan inte längre ändras av misstag. Sidan i appbutiken visar nu riktiga produktbilder av fläkten."
+  },
+  "0.4.6": {
+    "en": "More reliable Bluetooth: a fan whose connection silently dies is now reconnected instead of staying unavailable, a hung Bluetooth call can no longer freeze the device, and a slow connection attempt can no longer take over a newer one. Repair now fetches a new authentication code when the fan rejects the stored one, and commands are refused with a clear message while the fan is not accepting them.",
+    "sv": "Stabilare Bluetooth: en fläkt vars anslutning dör i tysthet återansluts nu i stället för att förbli otillgänglig, ett Bluetooth-anrop som hänger sig kan inte längre låsa enheten och ett långsamt anslutningsförsök kan inte längre ta över ett nyare. Reparera hämtar nu en ny autentiseringskod när fläkten avvisar den sparade, och kommandon nekas med ett tydligt meddelande när fläkten inte tar emot dem."
   }
 }
