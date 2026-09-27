@@ -85,8 +85,9 @@ re-reads the authentication code. Use it when a fan is stuck unavailable, or
 after putting a fan into pairing mode so that control (Boost, modes, fan speed)
 starts working.
 
-If a fan stays unreachable while other Bluetooth devices keep working, see
-"Homey's Bluetooth scanning stops" below - Repair cannot fix that.
+If the device says Homey's Bluetooth scanning has stopped, Repair cannot fix
+that: update Homey to 13.5.0 or later, or restart Homey (see "Homey's Bluetooth
+scanning stops" below).
 
 ## Notes for developers
 
@@ -121,26 +122,17 @@ Two related traps in the same area:
 
 ### Homey's Bluetooth scanning stops
 
-Homey's BLE manager periodically stops discovering new peripherals. A full scan
-returns only the peripherals that are already connected, and stays that way
-until Homey is restarted - restarting the app is not enough
+On Homey 13.4.1 and earlier, Homey's BLE manager could stop discovering new
+peripherals until Homey was restarted: scans returned only the peripherals that
+were already connected, so a fan that dropped its link could never reconnect
 ([athombv/homey-apps-sdk-issues#454](https://github.com/athombv/homey-apps-sdk-issues/issues/454)).
+Homey 13.5.0 fixes this. After 18 days on 13.5.0 without a reboot the failure had
+not recurred, and dropped fans reconnected on their own
+([measurements](docs/athom-issue-454-comment-draft.md)).
 
-Consequences worth knowing:
-
-- Already-connected devices keep working. On this Homey the Plejd app holds one
-  permanent connection to a mesh node and is unaffected, while these fans - which
-  need a scan for every reconnect - are locked out. A working Bluetooth device
-  elsewhere in the house does **not** mean Bluetooth is healthy.
-- The app detects the signature (six consecutive near-empty scans) and changes
-  the device's unavailable message accordingly.
-- Nothing an app can do recovers it. Prevention is the only lever, which is why
-  the app holds its connection for as long as possible and never disconnects
-  just to reconnect.
-
-Proactive session recycling was tried and removed: with an 8-minute recycle the
-bathroom fan lasted 83 minutes; with recycling disabled it was still connected
-after 8 hours 21 minutes.
+The app still supports older Homey versions, so it still detects the failure
+(six consecutive scans that see at most one peripheral) and then shows a message
+asking the user to restart Homey.
 
 ## Credits
 
