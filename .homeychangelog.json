@@ -30,5 +30,17 @@
   "0.4.9": {
     "en": "Maintenance: security update of the developer tooling. No change to how the app works.",
     "sv": "Underhåll: säkerhetsuppdatering av utvecklingsverktygen. Ingen ändring av hur appen fungerar."
+  },
+  "0.4.10": {
+    "en": "Maintenance: updated the developer documentation about Homey's Bluetooth issue. No change to how the app works.",
+    "sv": "Underhåll: uppdaterad utvecklardokumentation om Homeys Bluetooth-problem. Ingen ändring av hur appen fungerar."
+  },
+  "0.4.11": {
+    "en": "Documentation: the Bluetooth scanning problem is fixed in Homey 13.5.0. If a fan reports that Homey's Bluetooth scanning has stopped, update Homey to 13.5.0 or later. No change to how the app works.",
+    "sv": "Dokumentation: problemet med att Bluetooth-sökningen slutar fungera är rättat i Homey 13.5.0. Om en fläkt meddelar att Homeys Bluetooth-sökning har slutat fungera, uppdatera Homey till 13.5.0 eller senare. Ingen ändring av hur appen fungerar."
+  },
+  "0.4.12": {
+    "en": "Maintenance: updated the project's internal development rules. No change to how the app works.",
+    "sv": "Underhåll: uppdaterade projektets interna utvecklingsregler. Ingen ändring av hur appen fungerar."
   }
 }
