@@ -28,7 +28,7 @@ class IntelliventApp extends Homey.App {
    * onInit is called when the app is initialized.
    */
   async onInit() {
-    this.log('Intellivent Fresh app has been initialized');
+    this.log('Intellivent Sky Community app has been initialized');
 
     // Tail of the app-wide BLE operation queue
     this._bleQueue = Promise.resolve();
