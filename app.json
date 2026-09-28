@@ -1,12 +1,12 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
   "name": {
-    "en": "Fresh Intellivent",
-    "sv": "Fresh Intellivent"
+    "en": "Intellivent Sky Community",
+    "sv": "Intellivent Sky Community"
   },
   "description": {
     "en": "Intelligent ventilation for your bathroom",

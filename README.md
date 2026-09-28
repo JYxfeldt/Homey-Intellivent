@@ -1,6 +1,11 @@
-# Fresh Intellivent for Homey
+# Intellivent Sky Community for Homey
 
-Control your Fresh Intellivent ventilation fans via Bluetooth using your Homey Pro.
+Control your Intellivent Sky ventilation fan via Bluetooth using your Homey Pro.
+
+This app is compatible with Fresh Intellivent Sky. It is an independent
+community project, not affiliated with or approved by Fresh. The app and
+driver images are original illustrations (sources in `docs/artwork/`); no
+Fresh product photos or logos are used.
 
 ## Supported Devices
 
@@ -28,7 +33,7 @@ Control your Fresh Intellivent ventilation fans via Bluetooth using your Homey P
 ## Installation
 
 1. Install the app from the Homey App Store
-2. Go to Devices > Add Device > Fresh Intellivent
+2. Go to Devices > Add Device > Intellivent Sky Community
 3. Put your Intellivent device in pairing mode, as the first pairing screen describes (see Pairing below)
 4. Select your device from the list
 

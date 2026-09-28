@@ -12,8 +12,8 @@
     "sv": "Rättade saknade ikoner och bilder i appbutiken, utökade appbeskrivningen och städade i ändringsloggen."
   },
   "0.4.5": {
-    "en": "The app is now called Fresh Intellivent and is fully available in Swedish. Adding a fan now starts with instructions for putting it in pairing mode, error messages are clearer, and the authentication code can no longer be edited by mistake. The App Store page now shows real product photos of the fan.",
-    "sv": "Appen heter nu Fresh Intellivent och finns helt på svenska. När du lägger till en fläkt visas först instruktioner för parkopplingsläget, felmeddelandena är tydligare och autentiseringskoden kan inte längre ändras av misstag. Sidan i appbutiken visar nu riktiga produktbilder av fläkten."
+    "en": "The app is now fully available in Swedish. Adding a fan now starts with instructions for putting it in pairing mode, error messages are clearer, and the authentication code can no longer be edited by mistake.",
+    "sv": "Appen finns nu helt på svenska. När du lägger till en fläkt visas först instruktioner för parkopplingsläget, felmeddelandena är tydligare och autentiseringskoden kan inte längre ändras av misstag."
   },
   "0.4.6": {
     "en": "More reliable Bluetooth: a fan whose connection silently dies is now reconnected instead of staying unavailable, a hung Bluetooth call can no longer freeze the device, and a slow connection attempt can no longer take over a newer one. Repair now fetches a new authentication code when the fan rejects the stored one, and commands are refused with a clear message while the fan is not accepting them.",
@@ -42,5 +42,9 @@
   "0.4.12": {
     "en": "Maintenance: updated the project's internal development rules. No change to how the app works.",
     "sv": "Underhåll: uppdaterade projektets interna utvecklingsregler. Ingen ändring av hur appen fungerar."
+  },
+  "0.4.13": {
+    "en": "The app is now called Intellivent Sky Community and uses its own illustrations. It works with Fresh Intellivent Sky but is an independent community project, not affiliated with or approved by Fresh.",
+    "sv": "Appen heter nu Intellivent Sky Community och använder egna illustrationer. Den fungerar med Fresh Intellivent Sky men är ett fristående communityprojekt utan koppling till eller godkännande från Fresh."
   }
 }
