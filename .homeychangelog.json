@@ -46,5 +46,9 @@
   "0.4.13": {
     "en": "The app is now called Intellivent Sky Community and uses its own illustrations. It works with Fresh Intellivent Sky but is an independent community project, not affiliated with or approved by Fresh.",
     "sv": "Appen heter nu Intellivent Sky Community och använder egna illustrationer. Den fungerar med Fresh Intellivent Sky men är ett fristående communityprojekt utan koppling till eller godkännande från Fresh."
+  },
+  "0.4.14": {
+    "en": "New app and device icons, drawn for the app by Athom.",
+    "sv": "Nya ikoner för appen och enheten, ritade för appen av Athom."
   }
 }
