@@ -38,7 +38,9 @@ test('a connect that finishes after its timeout releases its link instead of tak
   const device = await make();
   const late = new FakePeripheral();
   device.advertisement = {
-    connect: () => new Promise((resolve) => setTimeout(() => resolve(late), 200)),
+    connect: () => new Promise((resolve) => {
+      setTimeout(() => resolve(late), 200);
+    }),
   };
 
   await assert.rejects(device._connect(), /timed out/);

@@ -464,7 +464,9 @@ class IntelliventSkyDevice extends Homey.Device {
     if (this._isConnecting) {
       // Wait for connection to complete
       while (this._isConnecting) {
-        await new Promise((resolve) => this.homey.setTimeout(resolve, 100));
+        await new Promise((resolve) => {
+          this.homey.setTimeout(resolve, 100);
+        });
       }
       if (this._isConnected && this._peripheral) {
         return this._peripheral;
@@ -1429,7 +1431,9 @@ class IntelliventSkyDevice extends Homey.Device {
             // several devices retrying in lockstep is itself enough to
             // destabilise Homey's BLE stack.
             this.log(`Retrying in ${Math.round(delay / 1000)} seconds...`);
-            await new Promise((resolve) => this.homey.setTimeout(resolve, delay));
+            await new Promise((resolve) => {
+              this.homey.setTimeout(resolve, delay);
+            });
           }
         } else {
           // Non-connection error, don't retry
