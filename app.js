@@ -174,9 +174,6 @@ class IntelliventApp extends Homey.App {
     // Trigger: Mode changed
     this.homey.flow.getDeviceTriggerCard('mode_changed');
 
-    // Trigger: Humidity changed
-    this.homey.flow.getDeviceTriggerCard('humidity_changed');
-
     // Condition: Mode is
     this.homey.flow.getConditionCard('mode_is')
       .registerRunListener(async (args) => {
