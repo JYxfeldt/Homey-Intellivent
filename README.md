@@ -42,8 +42,8 @@ Fresh product photos or logos are used.
 ### Triggers
 - Mode changed (tokens: `mode`, the stable id such as `humidity`, and
   `mode_name`, the translated name for notifications)
-- Humidity changed (fires when humidity has moved at least 1 % since it
-  last fired)
+- Humidity changed: Homey's standard card for the humidity sensor (humidity is
+  reported in whole percent, so it fires on a change of at least 1 %)
 
 ### Conditions
 - Mode is/is not...

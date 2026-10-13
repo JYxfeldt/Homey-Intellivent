@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.4.14",
+  "version": "0.4.16",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -480,31 +480,6 @@
               "en": "Humidity",
               "sv": "Luftfuktighet"
             }
-          }
-        ],
-        "args": [
-          {
-            "type": "device",
-            "name": "device",
-            "filter": "driver_id=intellivent-sky"
-          }
-        ]
-      },
-      {
-        "id": "humidity_changed",
-        "title": {
-          "en": "Humidity changed",
-          "sv": "Luftfuktigheten ändrades"
-        },
-        "tokens": [
-          {
-            "name": "humidity",
-            "type": "number",
-            "title": {
-              "en": "Humidity",
-              "sv": "Luftfuktighet"
-            },
-            "example": 65
           }
         ],
         "args": [

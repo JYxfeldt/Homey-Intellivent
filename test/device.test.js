@@ -38,7 +38,9 @@ test('a connect that finishes after its timeout releases its link instead of tak
   const device = await make();
   const late = new FakePeripheral();
   device.advertisement = {
-    connect: () => new Promise((resolve) => setTimeout(() => resolve(late), 200)),
+    connect: () => new Promise((resolve) => {
+      setTimeout(() => resolve(late), 200);
+    }),
   };
 
   await assert.rejects(device._connect(), /timed out/);
@@ -221,21 +223,17 @@ test('a link that drops right after connecting keeps its reconnect backoff', asy
   assert.strictEqual(device._reconnectAttempts, 1, 'a drop after a stable link retries from the start');
 });
 
-test('humidity_changed fires on a meaningful change only', async () => {
+test('humidity is reported in whole percent', async () => {
   const device = await make();
   const report = (humidity) => device._updateCapabilities({
     mode: 'constant_speed', modeRaw: 16, rpm: 1200, temperature: 21, humidity, authenticated: true,
   });
-  const fired = () => device.triggers.filter((t) => t.id === 'humidity_changed').length;
 
-  await report(50); // first reading only sets the baseline
   await report(50.4);
-  await report(50.9);
-  assert.strictEqual(fired(), 0);
-  await report(51.1);
-  assert.strictEqual(fired(), 1);
-  await report(51.5);
-  assert.strictEqual(fired(), 1, 'measured from where it last fired');
+  assert.strictEqual(device.getCapabilityValue('measure_humidity'), 50);
+  await report(50.6);
+  assert.strictEqual(device.getCapabilityValue('measure_humidity'), 51);
+  assert.strictEqual(device.triggers.filter((t) => t.id === 'humidity_changed').length, 0);
 });
 
 test('detection modes are not shown before the fan reports them', async () => {

@@ -61,10 +61,6 @@ class IntelliventSkyDevice extends Homey.Device {
     await this._migrateCapabilities();
     await this._migrateAuthCode();
 
-    // humidity_changed fires relative to this reading. Seeded from the stored
-    // value so an app restart does not fire it for an unchanged reading.
-    this._humidityTriggerBaseline = this.getCapabilityValue('measure_humidity');
-
     // Register capability listeners
     this._registerCapabilityListeners();
 
@@ -468,7 +464,9 @@ class IntelliventSkyDevice extends Homey.Device {
     if (this._isConnecting) {
       // Wait for connection to complete
       while (this._isConnecting) {
-        await new Promise((resolve) => this.homey.setTimeout(resolve, 100));
+        await new Promise((resolve) => {
+          this.homey.setTimeout(resolve, 100);
+        });
       }
       if (this._isConnected && this._peripheral) {
         return this._peripheral;
@@ -1433,7 +1431,9 @@ class IntelliventSkyDevice extends Homey.Device {
             // several devices retrying in lockstep is itself enough to
             // destabilise Homey's BLE stack.
             this.log(`Retrying in ${Math.round(delay / 1000)} seconds...`);
-            await new Promise((resolve) => this.homey.setTimeout(resolve, delay));
+            await new Promise((resolve) => {
+              this.homey.setTimeout(resolve, delay);
+            });
           }
         } else {
           // Non-connection error, don't retry
@@ -1564,20 +1564,12 @@ class IntelliventSkyDevice extends Homey.Device {
       await this.setCapabilityValue('measure_temperature', sensorData.temperature).catch(this.error);
     }
 
-    // Update humidity
+    // Update humidity. Whole percent: Homey's own "Humidity changed" Flow
+    // card fires on every change of the value, and the sensor's tenths
+    // (re-read every POLL_INTERVAL) would run bathroom Flows several times a
+    // minute. The sensor is not accurate to tenths anyway.
     if (sensorData.humidity > 0) {
-      await this.setCapabilityValue('measure_humidity', sensorData.humidity).catch(this.error);
-
-      // Trigger humidity changed flow, on a meaningful change only
-      const baseline = this._humidityTriggerBaseline;
-      if (typeof baseline !== 'number') {
-        this._humidityTriggerBaseline = sensorData.humidity;
-      } else if (Math.abs(sensorData.humidity - baseline) >= Constants.HUMIDITY_TRIGGER_DELTA) {
-        this._humidityTriggerBaseline = sensorData.humidity;
-        await this.homey.flow.getDeviceTriggerCard('humidity_changed')
-          .trigger(this, { humidity: sensorData.humidity })
-          .catch(this.error);
-      }
+      await this.setCapabilityValue('measure_humidity', Math.round(sensorData.humidity)).catch(this.error);
     }
 
     // Check for mode change and trigger flow (compare against the value

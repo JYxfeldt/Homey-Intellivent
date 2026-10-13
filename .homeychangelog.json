@@ -50,5 +50,13 @@
   "0.4.14": {
     "en": "New app and device icons, drawn for the app by Athom.",
     "sv": "Nya ikoner för appen och enheten, ritade för appen av Athom."
+  },
+  "0.4.15": {
+    "en": "The app's own “Humidity changed” Flow card has been removed: use Homey's standard humidity card instead. Humidity is now shown in whole percent.",
+    "sv": "Appens egna flödeskort ”Luftfuktigheten ändrades” har tagits bort: använd Homeys standardkort för luftfuktighet i stället. Luftfuktigheten visas nu i hela procent."
+  },
+  "0.4.16": {
+    "en": "Maintenance: security update of the developer tooling. No change to how the app works.",
+    "sv": "Underhåll: säkerhetsuppdatering av utvecklingsverktygen. Ingen ändring av hur appen fungerar."
   }
 }
