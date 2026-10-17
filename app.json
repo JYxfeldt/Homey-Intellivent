@@ -1,6 +1,6 @@
 {
   "id": "com.intellivent.fresh",
-  "version": "0.4.16",
+  "version": "0.4.17",
   "compatibility": ">=12.2.0",
   "sdk": 3,
   "platforms": ["local"],
@@ -51,8 +51,12 @@
         "sv": "Intellivent Sky"
       },
       "class": "fan",
-      "capabilities": ["onoff", "measure_rpm", "intellivent_rpm", "measure_humidity", "measure_temperature", "intellivent_mode", "intellivent_humidity_enabled", "intellivent_humidity_sensitivity", "intellivent_light_enabled", "intellivent_light_sensitivity", "intellivent_voc_enabled", "intellivent_voc_sensitivity", "intellivent_boost"],
+      "capabilities": ["onoff", "measure_rpm", "intellivent_rpm", "measure_humidity", "measure_temperature", "intellivent_mode", "intellivent_humidity_enabled", "intellivent_humidity_sensitivity", "intellivent_light_enabled", "intellivent_light_sensitivity", "intellivent_voc_enabled", "intellivent_voc_sensitivity", "intellivent_boost", "measure_signal_strength"],
       "capabilitiesOptions": {
+        "measure_signal_strength": {
+          "decimals": 0,
+          "title": { "en": "Bluetooth signal", "sv": "Bluetooth-signal" }
+        },
         "intellivent_rpm": {
           "min": 800,
           "max": 2400,
