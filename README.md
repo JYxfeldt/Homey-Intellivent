@@ -28,6 +28,9 @@ Fresh product photos or logos are used.
   set time. Speed and duration are configured per device under Settings > Boost
   (defaults: 2400 RPM for 15 minutes)
 - **Sensor Readings**: Monitor temperature and humidity
+- **Signal Strength**: The fan's Bluetooth signal (RSSI, dB) on the device
+  page, refreshed once a minute while connected. Values around -60 dB are
+  strong; below about -85 dB the link gets unreliable
 - **Flow Support**: Integrate with Homey flows for automation
 
 ## Installation

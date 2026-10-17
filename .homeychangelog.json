@@ -58,5 +58,9 @@
   "0.4.16": {
     "en": "Maintenance: security update of the developer tooling. No change to how the app works.",
     "sv": "Underhåll: säkerhetsuppdatering av utvecklingsverktygen. Ingen ändring av hur appen fungerar."
+  },
+  "0.4.17": {
+    "en": "The fan's Bluetooth signal strength is now shown on the device page, so you can see whether it is within good range of Homey.",
+    "sv": "Fläktens Bluetooth-signalstyrka visas nu på enhetssidan, så att du kan se om den har bra räckvidd till Homey."
   }
 }

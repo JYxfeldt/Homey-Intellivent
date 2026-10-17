@@ -42,6 +42,7 @@ class IntelliventSkyDevice extends Homey.Device {
     this._warningKey = undefined;
     this._unavailableKey = undefined;
     this._lastSensorLog = null;
+    this._lastRssiAt = 0; // when the signal strength was last read
 
     // Device-held configuration cached per connection (readback + own
     // writes), used to rebuild shared payloads without clobbering values set
@@ -185,7 +186,7 @@ class IntelliventSkyDevice extends Homey.Device {
    * Add capabilities that were introduced after initial pairing
    */
   async _migrateCapabilities() {
-    const newCapabilities = ['measure_rpm', 'intellivent_boost'];
+    const newCapabilities = ['measure_rpm', 'intellivent_boost', 'measure_signal_strength'];
     for (const cap of newCapabilities) {
       if (!this.hasCapability(cap)) {
         this.log(`Adding missing capability: ${cap}`);
@@ -383,6 +384,41 @@ class IntelliventSkyDevice extends Homey.Device {
     this._connectionFailures = [];
     this._extendedCooldownUntil = 0;
     this._cancelScheduledReconnect();
+  }
+
+  /**
+   * Re-read the connected fan's signal strength (RSSI), at most every
+   * RSSI_INTERVAL. A diagnostic only: a failed read is logged and never
+   * tears down the link - the status read is the heartbeat.
+   * Must be called inside _withConnection().
+   */
+  async _updateSignalStrength() {
+    const peripheral = this._peripheral;
+    if (!peripheral || typeof peripheral.updateRssi !== 'function') return;
+    if (Date.now() - this._lastRssiAt < Constants.RSSI_INTERVAL) return;
+    this._lastRssiAt = Date.now();
+
+    try {
+      // Documented as resolving a string; older firmware sets .rssi instead
+      const value = await this._withTimeout(peripheral.updateRssi(), Constants.GATT_TIMEOUT, 'RSSI');
+      await this._setSignalStrength(value ?? peripheral.rssi);
+    } catch (err) {
+      this.log(`Signal strength read failed (non-fatal): ${err.message}`);
+    }
+  }
+
+  /**
+   * Show a signal strength reading, in whole dB, when it is a plausible
+   * RSSI and differs from the current value
+   * @param {number|string} value - RSSI as reported by Homey
+   */
+  async _setSignalStrength(value) {
+    if (!this.hasCapability('measure_signal_strength')) return;
+    const rssi = Math.round(Number(value));
+    // RSSI is negative; 0 and positive values mean "not measured"
+    if (!Number.isFinite(rssi) || rssi >= 0 || rssi < -127) return;
+    if (rssi === this.getCapabilityValue('measure_signal_strength')) return;
+    await this.setCapabilityValue('measure_signal_strength', rssi).catch(this.error);
   }
 
   /**
@@ -903,6 +939,11 @@ class IntelliventSkyDevice extends Homey.Device {
 
     this._peripheral = peripheral;
     this.log('Connected to device');
+
+    // The advertisement carries the signal strength it was received at -
+    // a free first reading until the connected link is measured
+    await this._setSignalStrength(advertisement.rssi);
+    this._lastRssiAt = 0; // measure the live link on the first poll
 
     // Set up disconnect handler. Capture the peripheral: a late event from
     // an already-torn-down peripheral must not null out a newer connection.
@@ -1498,6 +1539,8 @@ class IntelliventSkyDevice extends Homey.Device {
         // Cheap piggyback on the poll: pick up an auth code if the fan has
         // since been put into pairing mode
         await this._retryAuthIfNeeded();
+
+        await this._updateSignalStrength();
 
         this._noteStableConnection();
       }, { retries: 0, timeout: 0 });

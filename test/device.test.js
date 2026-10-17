@@ -347,3 +347,41 @@ test('the Off mode is shown as the pause the fan reports', async () => {
   assert.strictEqual(device.getCapabilityValue('intellivent_mode'), 'pause');
   assert.strictEqual(device.getCapabilityValue('onoff'), false);
 });
+
+test('signal strength starts from the advertisement and follows the live link', async () => {
+  const device = await make();
+  await device._connect();
+  assert.strictEqual(device.getCapabilityValue('measure_signal_strength'), -72);
+
+  await device._fetchSensorData();
+  assert.strictEqual(device.getCapabilityValue('measure_signal_strength'), -67);
+  assert.strictEqual(device.peripheral.rssiReads, 1);
+
+  // Within RSSI_INTERVAL the poll does not read it again
+  await device._fetchSensorData();
+  assert.strictEqual(device.peripheral.rssiReads, 1);
+});
+
+test('a failed signal strength read never tears down the link', async () => {
+  const device = await make();
+  await device._connect();
+  device.peripheral.onUpdateRssi = async () => {
+    throw new Error('HCI error');
+  };
+
+  await device._fetchSensorData();
+
+  assert.strictEqual(device._isConnected, true);
+  assert.strictEqual(device.peripheral.disconnectCalls, 0);
+  assert.strictEqual(device.getCapabilityValue('measure_signal_strength'), -72, 'keeps the last good value');
+});
+
+test('implausible signal strength values are ignored', async () => {
+  const device = await make();
+  await device._setSignalStrength(-58.6);
+  assert.strictEqual(device.getCapabilityValue('measure_signal_strength'), -59);
+  for (const bad of [0, 12, -200, undefined, 'n/a']) {
+    await device._setSignalStrength(bad);
+    assert.strictEqual(device.getCapabilityValue('measure_signal_strength'), -59, `ignores ${bad}`);
+  }
+});

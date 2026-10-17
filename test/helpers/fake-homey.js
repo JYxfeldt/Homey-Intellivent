@@ -228,6 +228,9 @@ class FakePeripheral extends EventEmitter {
     super();
     this.isConnected = true;
     this.disconnectCalls = 0;
+    this.rssi = undefined;
+    this.rssiReads = 0;
+    this.onUpdateRssi = async () => '-67';
     this.chars = {
       deviceStatus: new FakeCharacteristic(Constants.DEVICE_STATUS, sensorBuffer()),
       auth: new FakeCharacteristic(Constants.AUTH, Buffer.alloc(4)),
@@ -249,6 +252,11 @@ class FakePeripheral extends EventEmitter {
 
   async discoverServices() {
     return this.services;
+  }
+
+  async updateRssi() {
+    this.rssiReads += 1;
+    return this.onUpdateRssi();
   }
 
   async disconnect() {
@@ -289,7 +297,7 @@ async function createDevice(options = {}) {
     },
   });
   device.peripheral = new FakePeripheral();
-  device.advertisement = { connect: async () => device.peripheral };
+  device.advertisement = { rssi: -72, connect: async () => device.peripheral };
 
   // onInit starts the poll and a first fetch; tests drive those themselves
   device._startPolling = () => {};
